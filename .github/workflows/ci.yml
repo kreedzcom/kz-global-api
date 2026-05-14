@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   build:
@@ -23,8 +24,9 @@ jobs:
           java-version: '25'
           distribution: 'temurin'
 
+      # gradle/actions v4.4.3 (refs/tags/v4 → commit); pin SHA for supply chain policy
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # 4.4.3
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
 
       - name: Build, test, and JaCoCo XML report
         run: ./gradlew build jacocoTestReport --no-daemon
@@ -37,6 +39,7 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >
           ./gradlew sonar --no-daemon
           -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}

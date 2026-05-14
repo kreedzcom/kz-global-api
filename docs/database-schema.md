@@ -1,6 +1,6 @@
 # Database Schema
 
-PostgreSQL 17 in production. Flyway manages all migrations from `src/main/resources/db/migration/`.  
+PostgreSQL in production. Flyway manages all migrations from `src/main/resources/db/migration/`.  
 H2 (PostgreSQL compatibility mode) is used in tests — see `TestDatabase` in `src/test`.
 
 ---
@@ -45,14 +45,14 @@ Represents a registered CS 1.6 server.
 
 Tracks published plugin builds.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | `SERIAL` PK | |
-| `semver` | `VARCHAR(50)` NOT NULL | e.g. `"1.2.3"` |
-| `checksum_linux` | `BYTEA` NOT NULL | Expected binary checksum for the Linux `.so` |
-| `checksum_windows` | `BYTEA` NOT NULL | Expected binary checksum for the Windows `.dll` |
-| `is_cutoff` | `BOOLEAN` NOT NULL | `true` = the API rejects connections from this version |
-| `created_at` | `TIMESTAMPTZ` NOT NULL | |
+| Column             | Type                   | Notes                                                       |
+|--------------------|------------------------|-------------------------------------------------------------|
+| `id`               | `SERIAL` PK            |                                                             |
+| `semver`           | `VARCHAR(50)` NOT NULL | Semantic version string; must match `plugin_version.semver` |
+| `checksum_linux`   | `BYTEA` NOT NULL       | Expected binary checksum for the Linux `.so`                |
+| `checksum_windows` | `BYTEA` NOT NULL       | Expected binary checksum for the Windows `.dll`             |
+| `is_cutoff`        | `BOOLEAN` NOT NULL     | `true` = the API rejects connections from this version      |
+| `created_at`       | `TIMESTAMPTZ` NOT NULL |                                                             |
 
 The `HELLO` handler validates `plugin_version` + `plugin_checksum` (Linux) against this table.
 

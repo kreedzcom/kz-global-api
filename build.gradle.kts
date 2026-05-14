@@ -74,6 +74,13 @@ tasks.named("sonar") {
 sonar {
     properties {
         property("sonar.sourceEncoding", "UTF-8")
+        property("sonar.sources", "src/main/kotlin")
+        property("sonar.tests", "src/test/kotlin")
+        property("sonar.java.coveragePlugin", "jacoco")
+        val jacocoXml = layout.buildDirectory.file("reports/jacoco/test/jacocoTestReport.xml").get().asFile
+        property("sonar.coverage.jacoco.xmlReportPaths", jacocoXml.absolutePath.replace('\\', '/'))
+        val mainClasses = layout.buildDirectory.dir("classes/kotlin/main").get().asFile
+        property("sonar.java.binaries", mainClasses.absolutePath.replace('\\', '/'))
     }
 }
 
