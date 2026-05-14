@@ -15,6 +15,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.insertIgnore
 import org.jetbrains.exposed.v1.jdbc.upsert
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.TestInstance
 import kotlin.test.*
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(kotlin.uuid.ExperimentalUuidApi::class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -146,10 +148,11 @@ class BroadcastServiceTest {
     }
 
     // ─── WR broadcast ────────────────────────────────────────────────────────
-    // A separate CoroutineScope on Dispatchers.Default is used for BroadcastService so
+    // A separate CoroutineScope on Dispatchers.Unconfined is used for BroadcastService so
     // that the long-lived subscribeToEvents coroutine doesn't keep the test runner alive.
     // runBlocking is used here (not runTest) because suspendTransaction dispatches on real
-    // Dispatchers.IO threads that are not controlled by the test scheduler.
+    // Dispatchers.IO threads that are not controlled by the test scheduler. WR broadcast
+    // tests use withTimeout + polling so CI does not flake on slow Default-pool scheduling.
 
     @Test
     fun `NewWorldRecord event triggers MAP_INFO to sessions on that map`() {
@@ -170,13 +173,17 @@ class BroadcastServiceTest {
         registry.register(session1)
         registry.register(session2)
 
-        val serviceScope = CoroutineScope(Dispatchers.Default + Job())
+        val serviceScope = CoroutineScope(Dispatchers.Unconfined + Job())
         val bus = KzEventBus()
         BroadcastService(registry, bus, scope = serviceScope)
 
         runBlocking {
             bus.emit(KzEvent.NewWorldRecord(recordId, "STEAM_0:0:99", "kz_bc", 20_000L, "pro"))
-            delay(500)
+            withTimeout(5_000.milliseconds) {
+                while (sent1().none { it.msgType == MsgType.MAP_INFO }) {
+                    delay(10.milliseconds)
+                }
+            }
         }
 
         serviceScope.cancel()
@@ -196,13 +203,13 @@ class BroadcastServiceTest {
             }
         }
 
-        val serviceScope = CoroutineScope(Dispatchers.Default + Job())
+        val serviceScope = CoroutineScope(Dispatchers.Unconfined + Job())
         val bus = KzEventBus()
         BroadcastService(ConnectedServersRegistry(), bus, scope = serviceScope)
 
         runBlocking {
             bus.emit(KzEvent.NewWorldRecord(recordId, "STEAM_0:0:99", "kz_empty_map", 20_000L, "pro"))
-            delay(200)
+            delay(50.milliseconds)
         }
 
         serviceScope.cancel()
