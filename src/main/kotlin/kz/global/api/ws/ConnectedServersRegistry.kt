@@ -38,7 +38,11 @@ class ConnectedServersRegistry {
     suspend fun closeAll() {
         log.info("Closing {} WebSocket sessions...", sessions.size)
         val reason = CloseReason(CloseReason.Codes.GOING_AWAY, "Server shutting down")
-        sessions.values.forEach { it.socket.close(reason) }
+        val snapshot = sessions.values.toList()
+        for (session in snapshot) {
+            runCatching { session.socket.close(reason) }
+                .onFailure { e -> log.warn("Failed to close session {}: {}", session.serverId, e.message) }
+        }
         sessions.clear()
     }
 

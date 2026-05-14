@@ -7,8 +7,10 @@ import kz.global.api.storage.R2Client
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.text.Charsets
 import kotlin.time.Clock
 import org.jetbrains.exposed.v1.core.*
+import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 import org.jetbrains.exposed.v1.jdbc.update
@@ -77,7 +79,7 @@ class ReplayService(
     fun parseChunk(bytes: ByteArray): ReplayChunk? {
         if (bytes.size < HEADER_SIZE) return null
 
-        val localUid = String(bytes, 0, LOCAL_UID_LEN).trimEnd('\u0000')
+        val localUid = String(bytes, 0, LOCAL_UID_LEN, Charsets.UTF_8).trimEnd('\u0000')
         val checksum = readUInt32LE(bytes, 72)
         val indexLong = readUInt64LE(bytes, 76)
         val totalLong = readUInt64LE(bytes, 84)
@@ -172,17 +174,16 @@ class ReplayService(
 
         val candidates = withContext(ioDispatcher) {
             suspendTransaction {
-                val wrIds = WorldRecordsTable.selectAll().map { it[WorldRecordsTable.recordId] }.toSet()
                 MapRecordsTable
-                    .selectAll()
-                    .where { MapRecordsTable.replayR2Key.isNotNull() }
-                    .filter { row ->
-                        row[MapRecordsTable.id] !in wrIds &&
-                            row[MapRecordsTable.createdAt] < cutoff
+                    .leftJoin(WorldRecordsTable, { MapRecordsTable.id }, { WorldRecordsTable.recordId })
+                    .select(MapRecordsTable.id, MapRecordsTable.replayR2Key)
+                    .where {
+                        MapRecordsTable.replayR2Key.isNotNull() and
+                            (MapRecordsTable.createdAt less cutoff) and
+                            WorldRecordsTable.recordId.isNull()
                     }
-                    .map { row ->
-                        row[MapRecordsTable.id] to row[MapRecordsTable.replayR2Key]!!
-                    }
+                    .map { row -> row[MapRecordsTable.id] to row[MapRecordsTable.replayR2Key]!! }
+                    .distinctBy { it.first }
             }
         }
 

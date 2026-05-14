@@ -23,6 +23,8 @@ repositories {
 }
 
 dependencies {
+    runtimeOnly(libs.janino)
+
     implementation(libs.bundles.ktor.server)
     implementation(libs.bundles.exposed)
     implementation(libs.bundles.flyway)

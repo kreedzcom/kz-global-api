@@ -15,6 +15,7 @@ class CourseTopHandler {
     suspend fun handle(session: GameServerSession, envelope: WsEnvelope) {
         val payload = json.decodeFromJsonElement(WantCourseTopPayload.serializer(), envelope.data)
         val limit = payload.limit.coerceIn(1, 100)
+        val offset = payload.offset.coerceAtLeast(0)
 
         val entries = suspendTransaction {
             if (payload.category == "pro") {
@@ -25,11 +26,11 @@ class CourseTopHandler {
                     .where { BestProRecordsTable.mapName eq payload.mapName }
                     .orderBy(MapRecordsTable.timeMs)
                     .limit(limit)
-                    .offset(payload.offset.toLong())
+                    .offset(offset.toLong())
                     .toList()
                     .mapIndexed { idx, row ->
                         CourseTopEntry(
-                            rank = payload.offset + idx + 1,
+                            rank = offset + idx + 1,
                             steamid = row[PlayersTable.steamid],
                             nickname = row[PlayersTable.lastNickname],
                             timeMs = row[MapRecordsTable.timeMs],
@@ -44,11 +45,11 @@ class CourseTopHandler {
                     .where { BestNubRecordsTable.mapName eq payload.mapName }
                     .orderBy(MapRecordsTable.timeMs)
                     .limit(limit)
-                    .offset(payload.offset.toLong())
+                    .offset(offset.toLong())
                     .toList()
                     .mapIndexed { idx, row ->
                         CourseTopEntry(
-                            rank = payload.offset + idx + 1,
+                            rank = offset + idx + 1,
                             steamid = row[PlayersTable.steamid],
                             nickname = row[PlayersTable.lastNickname],
                             timeMs = row[MapRecordsTable.timeMs],

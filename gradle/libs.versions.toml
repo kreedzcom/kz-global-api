@@ -14,6 +14,7 @@ aws-sdk-kotlin = "1.6.53"
 logback = "1.5.18"
 micrometer-prometheus = "1.14.6"
 logstash-logback-encoder = "8.0"
+janino = "3.1.12"
 mockk = "1.14.0"
 
 [libraries]
@@ -62,6 +63,7 @@ aws-s3 = { module = "aws.sdk.kotlin:s3", version.ref = "aws-sdk-kotlin" }
 # Logging
 logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 logstash-logback-encoder = { module = "net.logstash.logback:logstash-logback-encoder", version.ref = "logstash-logback-encoder" }
+janino = { module = "org.codehaus.janino:janino", version.ref = "janino" }
 
 # Metrics
 ktor-server-metrics-micrometer = { module = "io.ktor:ktor-server-metrics-micrometer", version.ref = "ktor" }

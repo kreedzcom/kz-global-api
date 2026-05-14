@@ -37,7 +37,6 @@ class RecordService(
     private val metrics: KzMetrics,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
-
     private val log = LoggerFactory.getLogger(RecordService::class.java)
 
     suspend fun submit(
@@ -139,6 +138,7 @@ class RecordService(
     ): Boolean {
         val existing = table.selectAll()
             .where { (steamidCol eq steamid) and (mapNameCol eq mapName) }
+            .forUpdate()
             .singleOrNull()
 
         if (existing == null) {
@@ -168,6 +168,7 @@ class RecordService(
         val existing = WorldRecordsTable
             .selectAll()
             .where { (WorldRecordsTable.mapName eq mapName) and (WorldRecordsTable.category eq category) }
+            .forUpdate()
             .singleOrNull()
 
         if (existing == null) {
@@ -208,5 +209,4 @@ class RecordService(
             put("is_pb", result.isPb)
         })
     }
-    
 }
