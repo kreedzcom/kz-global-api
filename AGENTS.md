@@ -72,10 +72,41 @@ Every feature or change must consider both:
 
 **Always write tests.** Every new feature or bug fix must include a test.
 
-- Prefer **integration tests** using `testcontainers` (a real Postgres container) over mocks for anything touching the DB
-- Use `testApplication { }` for Ktor route tests
+Every test must follow the **AAA pattern**: Arrange, Act, Assert — with a blank line separating each section. Do not add `// Arrange`, `// Act`, `// Assert` comments; the blank lines are enough.
+
+```kotlin
+@Test
+fun `description of what is verified`() {
+    val payload = AddRecordPayload(...)
+
+    val result = service.submit(serverId, pluginVersionId, payload)
+
+    assertIs<RecordResult.Accepted>(result)
+}
+```
+
+- Prefer **integration tests** using H2 in-memory DB (PostgreSQL compatibility mode) over mocks for anything touching the DB — see `TestDatabase` in `src/test/kotlin/.../support/`
+- Use `testApplication { }` for Ktor route tests — see `TestApplicationSetup`
 - Use `mockk` only when a real implementation is not practical (e.g. R2 client)
 - Run `./gradlew test` before committing — a build with failing tests is not acceptable
+- **Kotlin lambda receiver shadowing**: inside `Table.insert {}` / `Table.upsert {}` lambdas, bare identifiers resolve to the Table's columns first. If your outer scope has a field with the same name as a column, capture it in a local variable before the lambda to avoid silent column self-references
+
+## Documentation
+
+The `docs/` folder contains the reference documentation for this project. **Keep it up to date** whenever you make a meaningful change to architecture, protocols, or schema.
+
+| File                         | What it covers                                                                                                       |
+|------------------------------|----------------------------------------------------------------------------------------------------------------------|
+| `docs/architecture.md`       | System overview, component diagram, request flows, record/replay pipelines, observability, configuration, deployment |
+| `docs/websocket-protocol.md` | Every WS message type with full JSON schemas, binary replay frame layout, session lifecycle                          |
+| `docs/database-schema.md`    | All tables, columns, constraints, indexes, FK relationships, design decisions                                        |
+| `docs/plugin-integration.md` | Changes required in the `cs16kz` C++ plugin to integrate with this API                                               |
+
+When to update:
+- **New WS message type** → `websocket-protocol.md`
+- **New or changed DB table/column** → `database-schema.md`
+- **New service, package, or major flow change** → `architecture.md`
+- **Plugin-facing protocol change** → `plugin-integration.md`
 
 ## Adding a new WebSocket message type
 
