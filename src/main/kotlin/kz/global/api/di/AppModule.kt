@@ -23,6 +23,6 @@ fun appModule(config: AppConfig, prometheusRegistry: PrometheusMeterRegistry) = 
     single { ConnectedServersRegistry() }
     single { KzMetrics(get(), get()) }
     single { RecordService(get(), get(), get()) }
-    single { ReplayService(get(), get(), get()) }
+    single { ReplayService(get(), get()) }
     single { BroadcastService(get(), get()) }
 }

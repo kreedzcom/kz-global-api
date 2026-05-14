@@ -6,15 +6,18 @@ import kz.global.api.metrics.KzMetrics
 import kz.global.api.ws.FileAckPayload
 import kz.global.api.ws.GameServerSession
 import kz.global.api.ws.MsgType
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.selectAll
-import org.jetbrains.exposed.v1.jdbc.transactions.experimental.newSuspendedTransaction
+import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 import org.slf4j.LoggerFactory
 
 class ReplayChunkHandler(
     private val replayService: ReplayService,
     private val metrics: KzMetrics,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
 
     private val log = LoggerFactory.getLogger(ReplayChunkHandler::class.java)
@@ -30,12 +33,14 @@ class ReplayChunkHandler(
 
         val assembled = replayService.receive(chunk) ?: return
 
-        val recordId = newSuspendedTransaction(Dispatchers.IO) {
-            MapRecordsTable
-                .selectAll()
-                .where { MapRecordsTable.localUid eq chunk.localUid }
-                .singleOrNull()
-                ?.get(MapRecordsTable.id)
+        val recordId = withContext(ioDispatcher) {
+            suspendTransaction {
+                MapRecordsTable
+                    .selectAll()
+                    .where { MapRecordsTable.localUid eq chunk.localUid }
+                    .singleOrNull()
+                    ?.get(MapRecordsTable.id)
+            }
         }
 
         if (recordId == null) {

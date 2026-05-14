@@ -6,14 +6,11 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kz.global.api.db.tables.*
-import kz.global.api.domain.broadcast.BroadcastService
-import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
-import org.koin.ktor.ext.inject
 import kotlin.uuid.Uuid
 
 @Serializable
@@ -36,8 +33,6 @@ data class PatchRecordRequest(
 )
 
 fun Route.recordsRoute() {
-    val broadcastService by inject<BroadcastService>()
-
     route("/admin/records") {
         authenticate("admin") {
             get {

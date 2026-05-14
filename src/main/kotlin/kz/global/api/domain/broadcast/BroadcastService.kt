@@ -5,6 +5,7 @@ import kz.global.api.events.KzEventBus
 import kz.global.api.ws.ConnectedServersRegistry
 import kz.global.api.ws.MapInfoPayload
 import kz.global.api.ws.MsgType
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -16,8 +17,10 @@ import org.slf4j.LoggerFactory
 class BroadcastService(
     private val registry: ConnectedServersRegistry,
     private val eventBus: KzEventBus,
-    scope: CoroutineScope = CoroutineScope(Dispatchers.IO),
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    scope: CoroutineScope = CoroutineScope(ioDispatcher),
 ) {
+
     private val log = LoggerFactory.getLogger(BroadcastService::class.java)
 
     init {
@@ -71,4 +74,5 @@ class BroadcastService(
                 row[MapRecordsTable.playerSteamid] to row[MapRecordsTable.timeMs]
             }
     }
+
 }

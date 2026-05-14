@@ -58,7 +58,7 @@ fun ApplicationTestBuilder.setupAdminRoutes(adminKey: String = TEST_ADMIN_KEY) {
                 single { AuditLogger() }
                 single<R2Client> { mockk(relaxed = true) }
                 single { RecordService(get(), get(), get()) }
-                single { ReplayService(get(), get(), get()) }
+                single { ReplayService(get(), get()) }
                 single<BroadcastService> { mockk(relaxed = true) }
             })
         }

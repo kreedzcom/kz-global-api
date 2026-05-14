@@ -2,7 +2,6 @@ package kz.global.api.domain.replays
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.mockk
-import kz.global.api.events.AuditLogger
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.storage.R2Client
 import kz.global.api.ws.ConnectedServersRegistry
@@ -13,7 +12,6 @@ class ReplayServiceTest {
 
     private val service = ReplayService(
         r2Client = mockk(relaxed = true),
-        auditLogger = mockk(relaxed = true),
         metrics = KzMetrics(SimpleMeterRegistry(), ConnectedServersRegistry()),
     )
 

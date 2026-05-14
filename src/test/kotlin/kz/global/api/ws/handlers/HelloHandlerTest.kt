@@ -52,7 +52,7 @@ class HelloHandlerTest {
         broadcastService = BroadcastService(
             ConnectedServersRegistry(),
             KzEventBus(),
-            CoroutineScope(Dispatchers.Default + Job()),
+            scope = CoroutineScope(Dispatchers.Default + Job()),
         ),
         auditLogger = AuditLogger(),
     )

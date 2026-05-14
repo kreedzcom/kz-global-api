@@ -56,7 +56,7 @@ class MapChangeHandlerTest {
     )
 
     private fun broadcastService(): BroadcastService =
-        BroadcastService(ConnectedServersRegistry(), KzEventBus(), CoroutineScope(Dispatchers.Default + Job()))
+        BroadcastService(ConnectedServersRegistry(), KzEventBus(), scope = CoroutineScope(Dispatchers.Default + Job()))
 
     @Test
     fun `handle updates session currentMap`() = runTest {

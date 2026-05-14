@@ -172,7 +172,7 @@ class BroadcastServiceTest {
 
         val serviceScope = CoroutineScope(Dispatchers.Default + Job())
         val bus = KzEventBus()
-        BroadcastService(registry, bus, serviceScope)
+        BroadcastService(registry, bus, scope = serviceScope)
 
         runBlocking {
             bus.emit(KzEvent.NewWorldRecord(recordId, "STEAM_0:0:99", "kz_bc", 20_000L, "pro"))
@@ -198,7 +198,7 @@ class BroadcastServiceTest {
 
         val serviceScope = CoroutineScope(Dispatchers.Default + Job())
         val bus = KzEventBus()
-        BroadcastService(ConnectedServersRegistry(), bus, serviceScope)
+        BroadcastService(ConnectedServersRegistry(), bus, scope = serviceScope)
 
         runBlocking {
             bus.emit(KzEvent.NewWorldRecord(recordId, "STEAM_0:0:99", "kz_empty_map", 20_000L, "pro"))
@@ -211,7 +211,7 @@ class BroadcastServiceTest {
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private fun service() =
-        BroadcastService(ConnectedServersRegistry(), KzEventBus(), CoroutineScope(Dispatchers.Default + Job()))
+        BroadcastService(ConnectedServersRegistry(), KzEventBus(), scope = CoroutineScope(Dispatchers.Default + Job()))
 
     private fun insertRecord(
         map: String,

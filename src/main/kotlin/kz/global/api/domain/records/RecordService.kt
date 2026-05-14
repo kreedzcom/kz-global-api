@@ -7,12 +7,14 @@ import kz.global.api.events.KzEventBus
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.util.uuidV7
 import kz.global.api.ws.AddRecordPayload
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
-import org.jetbrains.exposed.v1.jdbc.transactions.experimental.newSuspendedTransaction
+import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 import org.slf4j.LoggerFactory
 import kotlin.uuid.Uuid
 
@@ -33,6 +35,7 @@ class RecordService(
     private val eventBus: KzEventBus,
     private val auditLogger: AuditLogger,
     private val metrics: KzMetrics,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
 
     private val log = LoggerFactory.getLogger(RecordService::class.java)
@@ -55,14 +58,15 @@ class RecordService(
         serverId: Int,
         pluginVersionId: Int,
         payload: AddRecordPayload,
-    ): Any = newSuspendedTransaction(Dispatchers.IO) {
+    ): Any = withContext(ioDispatcher) {
+        suspendTransaction {
         val existing = MapRecordsTable
             .selectAll()
             .where { MapRecordsTable.localUid eq payload.localUid }
             .singleOrNull()
 
         if (existing != null) {
-            return@newSuspendedTransaction RecordResult.Duplicate(existing[MapRecordsTable.id])
+            return@suspendTransaction RecordResult.Duplicate(existing[MapRecordsTable.id])
         }
 
         val minTime = MapMinimumTimesTable
@@ -73,7 +77,7 @@ class RecordService(
 
         if (minTime != null && payload.timeMs < minTime) {
             log.warn("Rejected: {}ms below minimum {}ms for map {}", payload.timeMs, minTime, payload.mapName)
-            return@newSuspendedTransaction RecordResult.Rejected("Time below map minimum")
+            return@suspendTransaction RecordResult.Rejected("Time below map minimum")
         }
 
         MapsTable.insertIgnore { it[name] = payload.mapName }
@@ -95,13 +99,14 @@ class RecordService(
             updateBestPro(payload.steamid, payload.mapName, recordId, payload.timeMs)
         } else false
 
-        val isWrNub = if (isPbNub) updateWorldRecord(payload.mapName, "nub", recordId, payload.timeMs) else false
-        val isWrPro = if (isPbPro) updateWorldRecord(payload.mapName, "pro", recordId, payload.timeMs) else false
+        val isWrNub = isPbNub && updateWorldRecord(payload.mapName, "nub", recordId, payload.timeMs)
+        val isWrPro = isPbPro && updateWorldRecord(payload.mapName, "pro", recordId, payload.timeMs)
 
         log.info("Accepted: {} record={} map={} time={}ms tp={}", payload.steamid, recordId, payload.mapName, payload.timeMs, payload.teleports)
         metrics.recordsSubmitted.increment()
         if (isWrNub || isWrPro) metrics.worldRecords.increment()
         LeaderboardResult(recordId, isPbNub || isPbPro, isWrNub, isWrPro)
+        }
     }
 
     private fun updateBestNub(steamid: String, mapName: String, recordId: Uuid, timeMs: Long): Boolean =
@@ -203,5 +208,5 @@ class RecordService(
             put("is_pb", result.isPb)
         })
     }
-
+    
 }

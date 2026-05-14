@@ -3,7 +3,6 @@ package kz.global.api.domain.replays
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import kz.global.api.config.R2Config
 import kz.global.api.db.tables.*
-import kz.global.api.events.AuditLogger
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.storage.R2Client
 import kz.global.api.support.TestDatabase
@@ -73,7 +72,6 @@ class ReplayServiceDbTest {
         r2 = FakeR2Client()
         service = ReplayService(
             r2Client = r2,
-            auditLogger = AuditLogger(),
             metrics = KzMetrics(SimpleMeterRegistry(), ConnectedServersRegistry()),
         )
 

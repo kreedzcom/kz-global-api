@@ -59,7 +59,7 @@ class MapInfoHandlerTest {
     )
 
     private fun broadcastService(): BroadcastService =
-        BroadcastService(ConnectedServersRegistry(), KzEventBus(), CoroutineScope(Dispatchers.Default + Job()))
+        BroadcastService(ConnectedServersRegistry(), KzEventBus(), scope = CoroutineScope(Dispatchers.Default + Job()))
 
     @Test
     fun `handle sends MAP_INFO when map exists`() = runTest {

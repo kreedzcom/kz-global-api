@@ -2,14 +2,15 @@ package kz.global.api.domain.replays
 
 import kz.global.api.db.tables.MapRecordsTable
 import kz.global.api.db.tables.WorldRecordsTable
-import kz.global.api.events.AuditLogger
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.storage.R2Client
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.time.Clock
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.selectAll
-import org.jetbrains.exposed.v1.jdbc.transactions.experimental.newSuspendedTransaction
+import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 import org.jetbrains.exposed.v1.jdbc.update
 import org.slf4j.LoggerFactory
 import java.util.zip.CRC32
@@ -31,16 +32,42 @@ data class ReplayChunk(
     val index: Int,
     val total: Int,
     val data: ByteArray,
-)
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is ReplayChunk) return false
+        return localUid == other.localUid &&
+            checksum == other.checksum &&
+            index == other.index &&
+            total == other.total &&
+            data.contentEquals(other.data)
+    }
 
-private data class UploadState(val chunks: Array<ByteArray?>)
+    override fun hashCode(): Int {
+        var result = localUid.hashCode()
+        result = 31 * result + checksum.hashCode()
+        result = 31 * result + index
+        result = 31 * result + total
+        result = 31 * result + data.contentHashCode()
+        return result
+    }
+}
+
+private class UploadState(val chunks: Array<ByteArray?>) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is UploadState) return false
+        return chunks.contentEquals(other.chunks)
+    }
+
+    override fun hashCode(): Int = chunks.contentDeepHashCode()
+}
 
 class ReplayService(
     private val r2Client: R2Client,
-    private val auditLogger: AuditLogger,
     private val metrics: KzMetrics,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
-
     private val log = LoggerFactory.getLogger(ReplayService::class.java)
     private val uploads = java.util.concurrent.ConcurrentHashMap<String, UploadState>()
     private val ZSTD_MAGIC = byteArrayOf(0x28.toByte(), 0xB5.toByte(), 0x2F.toByte(), 0xFD.toByte())
@@ -86,9 +113,11 @@ class ReplayService(
         val r2Key = "replays/$recordId.krpz"
         r2Client.put(r2Key, bytes)
 
-        newSuspendedTransaction(Dispatchers.IO) {
-            MapRecordsTable.update({ MapRecordsTable.localUid eq localUid }) {
-                it[MapRecordsTable.replayR2Key] = r2Key
+        withContext(ioDispatcher) {
+            suspendTransaction {
+                MapRecordsTable.update({ MapRecordsTable.localUid eq localUid }) {
+                    it[MapRecordsTable.replayR2Key] = r2Key
+                }
             }
         }
         metrics.replayUploads.increment()
@@ -96,15 +125,17 @@ class ReplayService(
     }
 
     suspend fun getPresignedUrl(mapName: String): String? {
-        val r2Key = newSuspendedTransaction(Dispatchers.IO) {
-            (WorldRecordsTable innerJoin MapRecordsTable)
-                .selectAll()
-                .where {
-                    (WorldRecordsTable.mapName eq mapName) and
-                    (WorldRecordsTable.category eq "nub")
-                }
-                .singleOrNull()
-                ?.get(MapRecordsTable.replayR2Key)
+        val r2Key = withContext(ioDispatcher) {
+            suspendTransaction {
+                (WorldRecordsTable innerJoin MapRecordsTable)
+                    .selectAll()
+                    .where {
+                        (WorldRecordsTable.mapName eq mapName) and
+                        (WorldRecordsTable.category eq "nub")
+                    }
+                    .singleOrNull()
+                    ?.get(MapRecordsTable.replayR2Key)
+            }
         } ?: return null
 
         return r2Client.presignedGetUrl(r2Key)
@@ -114,22 +145,24 @@ class ReplayService(
         log.info("Starting replay GC (>{} days old, non-WR)...", daysOld)
         val cutoff = Clock.System.now().minus(daysOld.days)
 
-        val candidates = newSuspendedTransaction(Dispatchers.IO) {
-            val wrIds = WorldRecordsTable.selectAll().map { it[WorldRecordsTable.recordId] }.toSet()
-            MapRecordsTable
-                .selectAll()
-                .where { MapRecordsTable.replayR2Key.isNotNull() }
-                .filter { row ->
-                    row[MapRecordsTable.id] !in wrIds &&
-                    row[MapRecordsTable.createdAt] < cutoff
-                }
-                .mapNotNull { row ->
-                    row[MapRecordsTable.id] to row[MapRecordsTable.replayR2Key]!!
-                }
+        val candidates = withContext(ioDispatcher) {
+            suspendTransaction {
+                val wrIds = WorldRecordsTable.selectAll().map { it[WorldRecordsTable.recordId] }.toSet()
+                MapRecordsTable
+                    .selectAll()
+                    .where { MapRecordsTable.replayR2Key.isNotNull() }
+                    .filter { row ->
+                        row[MapRecordsTable.id] !in wrIds &&
+                        row[MapRecordsTable.createdAt] < cutoff
+                    }
+                    .mapNotNull { row ->
+                        row[MapRecordsTable.id] to row[MapRecordsTable.replayR2Key]!!
+                    }
+            }
         }
 
         var deleted = 0
-        candidates.forEach { (recordId, r2Key) ->
+        candidates.forEach { (_, r2Key) ->
             runCatching { r2Client.delete(r2Key) }.onSuccess { deleted++ }
                 .onFailure { log.warn("Failed to delete replay {}: {}", r2Key, it.message) }
         }
@@ -137,7 +170,7 @@ class ReplayService(
     }
 
     private fun readUInt32LE(buf: ByteArray, offset: Int): Long =
-        ((buf[offset].toLong() and 0xFF)) or
+        (buf[offset].toLong() and 0xFF) or
         ((buf[offset + 1].toLong() and 0xFF) shl 8) or
         ((buf[offset + 2].toLong() and 0xFF) shl 16) or
         ((buf[offset + 3].toLong() and 0xFF) shl 24)
@@ -152,5 +185,4 @@ class ReplayService(
         if (this.size < prefix.size) return false
         return prefix.indices.all { this[it] == prefix[it] }
     }
-
 }
