@@ -2,13 +2,6 @@
 
 Global record backend for CS 1.6 KZ (Kreedz). Game servers running the [cs16kz](https://github.com/nquinquenel/cs16kz) plugin connect via WebSocket to submit runs, fetch map records, and receive world record broadcasts.
 
-## Stack
-
-- Kotlin + Ktor (WebSocket + REST)
-- PostgreSQL + Exposed ORM + Flyway
-- Cloudflare R2 for replay storage
-- Docker Compose for deployment
-
 ## Getting started
 
 ```bash

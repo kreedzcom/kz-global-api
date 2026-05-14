@@ -1,17 +1,21 @@
 [versions]
 kotlin = "2.3.21"
+sonarqube = "7.3.0.8198"
 ktor = "3.4.3"
 exposed = "1.2.0"
 koin = "4.2.1"
 coroutines = "1.10.2"
 kotlinx-serialization = "1.8.1"
+kotlinx-datetime = "0.6.2"
 hikari = "6.3.0"
 postgresql = "42.7.6"
 flyway = "12.6.1"
 aws-sdk-kotlin = "1.6.53"
 logback = "1.5.18"
+micrometer-prometheus = "1.14.6"
+logstash-logback-encoder = "8.0"
+janino = "3.1.12"
 mockk = "1.14.0"
-testcontainers = "1.21.0"
 
 [libraries]
 # Ktor server
@@ -27,6 +31,7 @@ ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref 
 
 # Serialization
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
 
 # Coroutines
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -57,10 +62,18 @@ aws-s3 = { module = "aws.sdk.kotlin:s3", version.ref = "aws-sdk-kotlin" }
 
 # Logging
 logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+logstash-logback-encoder = { module = "net.logstash.logback:logstash-logback-encoder", version.ref = "logstash-logback-encoder" }
+janino = { module = "org.codehaus.janino:janino", version.ref = "janino" }
+
+# Metrics
+ktor-server-metrics-micrometer = { module = "io.ktor:ktor-server-metrics-micrometer", version.ref = "ktor" }
+micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus", version.ref = "micrometer-prometheus" }
 
 # Testing
+ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
+ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.ref = "ktor" }
+h2 = { module = "com.h2database:h2", version = "2.3.232" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
-testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
 
 [bundles]
 ktor-server = [
@@ -92,3 +105,4 @@ koin = [
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ktor = { id = "io.ktor.plugin", version.ref = "ktor" }
+sonarqube = { id = "org.sonarqube", version.ref = "sonarqube" }
