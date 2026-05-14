@@ -2,6 +2,8 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ktor)
+    jacoco
+    alias(libs.plugins.sonarqube)
 }
 
 group = "kz.global"
@@ -56,6 +58,23 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
 tasks.test {
     useJUnitPlatform()
     jvmArgs("-XX:+EnableDynamicAgentLoading", "-Xshare:off")
+}
+
+tasks.jacocoTestReport {
+    reports {
+        xml.required.set(true)
+        html.required.set(false)
+    }
+}
+
+tasks.named("sonar") {
+    dependsOn(tasks.jacocoTestReport)
+}
+
+sonar {
+    properties {
+        property("sonar.sourceEncoding", "UTF-8")
+    }
 }
 
 ktor {

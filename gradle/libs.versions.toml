@@ -1,5 +1,6 @@
 [versions]
 kotlin = "2.3.21"
+sonarqube = "6.2.0.5505"
 ktor = "3.4.3"
 exposed = "1.2.0"
 koin = "4.2.1"
@@ -100,3 +101,4 @@ koin = [
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ktor = { id = "io.ktor.plugin", version.ref = "ktor" }
+sonarqube = { id = "org.sonarqube", version.ref = "sonarqube" }

@@ -8,7 +8,7 @@ This file tells AI coding agents how to work in this repository.
 Game servers running the `cs16kz` plugin connect via WebSocket, submit player runs,
 and receive real-time world record broadcasts. Replays are stored on Cloudflare R2.
 
-Companion repo: [cs16kz](https://github.com/nquinquenel/cs16kz) — the C++ AMX Mod X plugin.
+Companion repo: [cs16kz](https://github.com/GameChaos/cs16kz) — the C++ AMX Mod X plugin.
 
 ## Tech stack
 
@@ -95,7 +95,7 @@ fun `description of what is verified`() {
 
 The `docs/` folder contains the reference documentation for this project. **Keep it up to date** whenever you make a meaningful change to architecture, protocols, or schema.
 
-| File                         | What it covers                                                                                                       |
+| File                         | What it cover s                                                                                                      |
 |------------------------------|----------------------------------------------------------------------------------------------------------------------|
 | `docs/architecture.md`       | System overview, component diagram, request flows, record/replay pipelines, observability, configuration, deployment |
 | `docs/websocket-protocol.md` | Every WS message type with full JSON schemas, binary replay frame layout, session lifecycle                          |
