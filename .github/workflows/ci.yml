@@ -31,7 +31,14 @@ jobs:
       - name: Build, test, and JaCoCo XML report
         run: ./gradlew build jacocoTestReport --no-daemon
 
-      - name: SonarCloud scan
+      # SonarCloud "Automatic Analysis" (repo integration without CI) does not import JaCoCo —
+      # coverage only appears when this job runs ./gradlew sonar with the XML below.
+      - name: Verify JaCoCo XML exists (required for Sonar coverage)
+        run: |
+          test -f build/reports/jacoco/test/jacocoTestReport.xml
+          echo "JaCoCo XML size: $(wc -c < build/reports/jacoco/test/jacocoTestReport.xml) bytes"
+
+      - name: SonarCloud scan (Gradle; uploads JaCoCo coverage)
         if: >
           vars.SONARQUBE_ENABLED == 'true' &&
           (github.event_name != 'pull_request' ||
