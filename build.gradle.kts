@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ktor)
     jacoco
+    alias(libs.plugins.sonarqube)
 }
 
 group = "kz.global"
@@ -65,6 +66,38 @@ tasks.jacocoTestReport {
     reports {
         xml.required.set(true)
         html.required.set(false)
+    }
+}
+
+tasks.named("sonar") {
+    dependsOn(tasks.jacocoTestReport)
+}
+
+sonar {
+    properties {
+        property("sonar.projectKey", "kreedzcom_kz-global-api")
+        property("sonar.organization", "kreedzcom")
+        property("sonar.host.url", "https://sonarcloud.io")
+
+        property("sonar.sourceEncoding", "UTF-8")
+        property("sonar.sources", "src/main/kotlin")
+        property("sonar.tests", "src/test/kotlin")
+
+        val buildDir = layout.buildDirectory.get().asFile
+        property(
+            "sonar.java.binaries",
+            buildDir.resolve("classes/kotlin/main").absolutePath.replace('\\', '/'),
+        )
+        property(
+            "sonar.java.test.binaries",
+            buildDir.resolve("classes/kotlin/test").absolutePath.replace('\\', '/'),
+        )
+
+        val jacocoXml = tasks.jacocoTestReport.get().reports.xml.outputLocation.asFile.get()
+        property(
+            "sonar.coverage.jacoco.xmlReportPaths",
+            jacocoXml.absolutePath.replace('\\', '/'),
+        )
     }
 }
 
