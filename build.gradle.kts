@@ -64,7 +64,12 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
 
 tasks.test {
     useJUnitPlatform()
-    jvmArgs("-XX:+EnableDynamicAgentLoading", "-Xshare:off")
+    jvmArgs(
+        "-XX:+EnableDynamicAgentLoading",
+        "-Xshare:off",
+        // MockK / Byte Buddy: JDK 24+ class file versions need experimental mode until Byte Buddy catches up.
+        "-Dnet.bytebuddy.experimental=true",
+    )
 }
 
 tasks.jacocoTestReport {

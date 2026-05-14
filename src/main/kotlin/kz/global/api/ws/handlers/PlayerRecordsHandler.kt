@@ -28,8 +28,9 @@ class PlayerRecordsHandler {
                     PlayerRecordEntry(
                         mapName = row[MapRecordsTable.mapName],
                         timeMs = row[MapRecordsTable.timeMs],
-                        teleports = row[MapRecordsTable.teleports],
                         recordId = row[MapRecordsTable.id].toString(),
+                        checkpoints = row[MapRecordsTable.checkpoints],
+                        gochecks = row[MapRecordsTable.gochecks],
                     )
                 }
         }

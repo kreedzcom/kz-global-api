@@ -65,7 +65,8 @@ class RecordsRouteTest {
     private fun insertRecord(
         map: String = "kz_canyon",
         timeMs: Long = 30_000L,
-        teleports: Int = 0,
+        checkpoints: Int = 0,
+        gochecks: Int = 0,
         flagged: Boolean = false,
     ): kotlin.uuid.Uuid {
         val id = uuidV7()
@@ -81,7 +82,8 @@ class RecordsRouteTest {
                 it[playerSteamid] = sid
                 it[mapName] = map
                 it[MapRecordsTable.timeMs] = timeMs
-                it[MapRecordsTable.teleports] = teleports
+                it[MapRecordsTable.checkpoints] = checkpoints
+                it[MapRecordsTable.gochecks] = gochecks
                 it[localUid] = "uid-${id}"
                 it[MapRecordsTable.pluginVersionId] = pvId
                 it[MapRecordsTable.flagged] = flagged

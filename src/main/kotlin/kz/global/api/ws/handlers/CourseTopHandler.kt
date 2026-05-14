@@ -34,7 +34,8 @@ class CourseTopHandler {
                             steamid = row[PlayersTable.steamid],
                             nickname = row[PlayersTable.lastNickname],
                             timeMs = row[MapRecordsTable.timeMs],
-                            teleports = row[MapRecordsTable.teleports],
+                            checkpoints = row[MapRecordsTable.checkpoints],
+                            gochecks = row[MapRecordsTable.gochecks],
                         )
                     }
             } else {
@@ -53,7 +54,8 @@ class CourseTopHandler {
                             steamid = row[PlayersTable.steamid],
                             nickname = row[PlayersTable.lastNickname],
                             timeMs = row[MapRecordsTable.timeMs],
-                            teleports = row[MapRecordsTable.teleports],
+                            checkpoints = row[MapRecordsTable.checkpoints],
+                            gochecks = row[MapRecordsTable.gochecks],
                         )
                     }
             }

@@ -11,7 +11,8 @@ sealed class KzEvent {
         val playerSteamid: String,
         val mapName: String,
         val timeMs: Long,
-        val teleports: Int,
+        val checkpoints: Int,
+        val gochecks: Int,
     ) : KzEvent()
 
     data class NewWorldRecord(

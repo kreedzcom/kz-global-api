@@ -155,7 +155,7 @@ No response is sent.
 }
 ```
 
-- `category`: `"nub"` (teleports allowed) or `"pro"` (no teleports). Default `"nub"`.
+- `category`: `"nub"` (all runs) or `"pro"` (runs with **`gochecks == 0`** only). Default `"nub"`.
 - `limit`: 1–100. `offset`: pagination start.
 
 `COURSE_TOP` (103) response:
@@ -165,8 +165,8 @@ No response is sent.
   "map_name": "kz_canyon",
   "category": "pro",
   "entries": [
-    { "rank": 1, "steamid": "STEAM_0:0:1", "nickname": "player1", "time_ms": 28100, "teleports": 0 },
-    { "rank": 2, "steamid": "STEAM_0:0:2", "nickname": "player2", "time_ms": 30450, "teleports": 0 }
+    { "rank": 1, "steamid": "STEAM_0:0:1", "nickname": "player1", "time_ms": 28100, "checkpoints": 12, "gochecks": 0 },
+    { "rank": 2, "steamid": "STEAM_0:0:2", "nickname": "player2", "time_ms": 30450, "checkpoints": 12, "gochecks": 0 }
   ]
 }
 ```
@@ -185,8 +185,8 @@ No response is sent.
 {
   "steamid": "STEAM_0:0:12345",
   "records": [
-    { "map_name": "kz_canyon", "time_ms": 29500, "teleports": 0, "record_id": "<uuid>" },
-    { "map_name": "kz_canyon", "time_ms": 31000, "teleports": 3, "record_id": "<uuid>" }
+    { "map_name": "kz_canyon", "time_ms": 29500, "record_id": "<uuid>", "checkpoints": 12, "gochecks": 0 },
+    { "map_name": "kz_canyon", "time_ms": 31000, "record_id": "<uuid>", "checkpoints": 12, "gochecks": 2 }
   ]
 }
 ```
@@ -199,17 +199,18 @@ Only non-flagged records are returned.
 
 ```json
 {
-  "steamid":   "STEAM_0:0:12345",
-  "map_name":  "kz_canyon",
-  "time_ms":   28950,
-  "teleports": 0,
-  "local_uid": "server-side-unique-string"
+  "steamid":     "STEAM_0:0:12345",
+  "map_name":    "kz_canyon",
+  "time_ms":     28950,
+  "local_uid":   "server-side-unique-string",
+  "checkpoints": 12,
+  "gochecks":    0
 }
 ```
 
 - `local_uid` is a server-generated string used for idempotency. Submitting the same `local_uid` twice returns the same `RECORD_ACK` both times.
-- `teleports == 0` → the run is counted as both **nub** and **pro**.
-- `teleports > 0` → the run is counted as **nub** only.
+- `gochecks` — required non-negative integer: go-check count. **`gochecks == 0`** → the run is counted for both **nub** and **pro** leaderboards; **`gochecks > 0`** → **nub** only.
+- `checkpoints` — required non-negative integer: how many checkpoints were touched in the run (aggregate count only; no per-segment times). If **`gochecks > 0`**, **`checkpoints` must be greater than zero** (a positive go-check count without any checkpoint is rejected as invalid).
 
 `RECORD_ACK` (105) response:
 

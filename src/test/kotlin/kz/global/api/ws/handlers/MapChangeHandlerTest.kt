@@ -85,6 +85,8 @@ class MapChangeHandlerTest {
                 it[playerSteamid] = "STEAM_0:0:1"
                 it[mapName] = "kz_canyon"
                 it[timeMs] = 28_000L
+                it[checkpoints] = 12
+                it[gochecks] = 0
                 it[localUid] = "uid-mc"
                 it[MapRecordsTable.pluginVersionId] = pvId
             }

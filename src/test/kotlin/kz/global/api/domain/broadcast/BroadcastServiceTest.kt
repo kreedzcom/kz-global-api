@@ -15,6 +15,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.insertIgnore
 import org.jetbrains.exposed.v1.jdbc.upsert
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.TestInstance
 import kotlin.test.*
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(kotlin.uuid.ExperimentalUuidApi::class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -80,7 +82,7 @@ class BroadcastServiceTest {
 
     @Test
     fun `getMapInfo returns correct nub world record data`() = runTest {
-        val recordId = insertRecord("kz_wrs", "STEAM_0:0:1", 30_000L, teleports = 2)
+        val recordId = insertRecord("kz_wrs", "STEAM_0:0:1", 30_000L, 10, 2)
         transaction {
             WorldRecordsTable.insert {
                 it[mapName] = "kz_wrs"
@@ -100,7 +102,7 @@ class BroadcastServiceTest {
 
     @Test
     fun `getMapInfo returns correct pro world record data`() = runTest {
-        val recordId = insertRecord("kz_pro", "STEAM_0:0:2", 25_000L, teleports = 0)
+        val recordId = insertRecord("kz_pro", "STEAM_0:0:2", 25_000L, 0, 0)
         transaction {
             WorldRecordsTable.insert {
                 it[mapName] = "kz_pro"
@@ -120,8 +122,8 @@ class BroadcastServiceTest {
 
     @Test
     fun `getMapInfo returns both nub and pro WR when both exist`() = runTest {
-        val nubId = insertRecord("kz_both", "STEAM_0:0:1", 35_000L, teleports = 3)
-        val proId = insertRecord("kz_both", "STEAM_0:0:2", 28_000L, teleports = 0, localUid = "uid-pro")
+        val nubId = insertRecord("kz_both", "STEAM_0:0:1", 35_000L, 10, 3)
+        val proId = insertRecord("kz_both", "STEAM_0:0:2", 28_000L, 0, 0, "uid-pro")
         transaction {
             WorldRecordsTable.insert {
                 it[mapName] = "kz_both"
@@ -146,14 +148,15 @@ class BroadcastServiceTest {
     }
 
     // ─── WR broadcast ────────────────────────────────────────────────────────
-    // A separate CoroutineScope on Dispatchers.Default is used for BroadcastService so
+    // A separate CoroutineScope on Dispatchers.Unconfined is used for BroadcastService so
     // that the long-lived subscribeToEvents coroutine doesn't keep the test runner alive.
     // runBlocking is used here (not runTest) because suspendTransaction dispatches on real
-    // Dispatchers.IO threads that are not controlled by the test scheduler.
+    // Dispatchers.IO threads that are not controlled by the test scheduler. WR broadcast
+    // tests use withTimeout + polling so CI does not flake on slow Default-pool scheduling.
 
     @Test
     fun `NewWorldRecord event triggers MAP_INFO to sessions on that map`() {
-        val recordId = insertRecord("kz_bc", "STEAM_0:0:99", 20_000L, teleports = 0)
+        val recordId = insertRecord("kz_bc", "STEAM_0:0:99", 20_000L, 0, 0)
         transaction {
             WorldRecordsTable.insert {
                 it[mapName] = "kz_bc"
@@ -170,13 +173,17 @@ class BroadcastServiceTest {
         registry.register(session1)
         registry.register(session2)
 
-        val serviceScope = CoroutineScope(Dispatchers.Default + Job())
+        val serviceScope = CoroutineScope(Dispatchers.Unconfined + Job())
         val bus = KzEventBus()
         BroadcastService(registry, bus, scope = serviceScope)
 
         runBlocking {
             bus.emit(KzEvent.NewWorldRecord(recordId, "STEAM_0:0:99", "kz_bc", 20_000L, "pro"))
-            delay(500)
+            withTimeout(5_000.milliseconds) {
+                while (sent1().none { it.msgType == MsgType.MAP_INFO }) {
+                    delay(10.milliseconds)
+                }
+            }
         }
 
         serviceScope.cancel()
@@ -187,7 +194,7 @@ class BroadcastServiceTest {
 
     @Test
     fun `NewWorldRecord event does nothing when no sessions are on that map`() {
-        val recordId = insertRecord("kz_empty_map", "STEAM_0:0:99", 20_000L, teleports = 0)
+        val recordId = insertRecord("kz_empty_map", "STEAM_0:0:99", 20_000L, 0, 0)
         transaction {
             WorldRecordsTable.insert {
                 it[mapName] = "kz_empty_map"
@@ -196,13 +203,13 @@ class BroadcastServiceTest {
             }
         }
 
-        val serviceScope = CoroutineScope(Dispatchers.Default + Job())
+        val serviceScope = CoroutineScope(Dispatchers.Unconfined + Job())
         val bus = KzEventBus()
         BroadcastService(ConnectedServersRegistry(), bus, scope = serviceScope)
 
         runBlocking {
             bus.emit(KzEvent.NewWorldRecord(recordId, "STEAM_0:0:99", "kz_empty_map", 20_000L, "pro"))
-            delay(200)
+            delay(50.milliseconds)
         }
 
         serviceScope.cancel()
@@ -217,7 +224,8 @@ class BroadcastServiceTest {
         map: String,
         steamid: String,
         timeMs: Long,
-        teleports: Int,
+        checkpoints: Int,
+        gochecks: Int,
         localUid: String = "uid-${map}-${steamid}",
     ): kotlin.uuid.Uuid {
         val id = uuidV7()
@@ -236,7 +244,8 @@ class BroadcastServiceTest {
                 it[playerSteamid] = sid
                 it[mapName] = map
                 it[MapRecordsTable.timeMs] = timeMs
-                it[MapRecordsTable.teleports] = teleports
+                it[MapRecordsTable.checkpoints] = checkpoints
+                it[MapRecordsTable.gochecks] = gochecks
                 it[MapRecordsTable.localUid] = localUid
                 it[MapRecordsTable.pluginVersionId] = pvId
             }
