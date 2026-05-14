@@ -10,6 +10,7 @@ import kz.global.api.support.TestDatabase
 import kz.global.api.ws.AddRecordPayload
 import kz.global.api.ws.ConnectedServersRegistry
 import kotlinx.coroutines.test.runTest
+import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.insertIgnore
 import org.jetbrains.exposed.v1.jdbc.selectAll
@@ -65,6 +66,23 @@ class RecordServiceTest {
     }
 
     // ─── Basic acceptance ────────────────────────────────────────────────────
+
+    @Test
+    fun `submit inserts placeholder player when PLAYER_JOIN was not received`() = runTest {
+        transaction {
+            val sid = steamid
+            PlayersTable.deleteWhere { PlayersTable.steamid eq sid }
+        }
+        val payload = AddRecordPayload(steamid, "kz_canyon", 32_000L, 0, "uid-nojoin")
+
+        val result = service.submit(serverId, pluginVersionId, payload)
+
+        assertIs<RecordResult.Accepted>(result)
+        transaction {
+            val nick = PlayersTable.selectAll().where { PlayersTable.steamid eq steamid }.single()[PlayersTable.lastNickname]
+            assertEquals(steamid, nick)
+        }
+    }
 
     @Test
     fun `submit accepts a valid pro run and returns Accepted`() = runTest {

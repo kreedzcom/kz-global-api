@@ -2,7 +2,10 @@ package kz.global.api.support
 
 import io.ktor.websocket.*
 import io.mockk.coEvery
+import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.serialization.json.Json
 import kz.global.api.ws.GameServerSession
 import kz.global.api.ws.WsEnvelope
@@ -27,6 +30,7 @@ private val json = Json { ignoreUnknownKeys = true }
 fun mockSession(serverId: Int = 1, pluginVersionId: Int = 0): Pair<GameServerSession, () -> List<WsEnvelope>> {
     val captured = mutableListOf<String>()
     val socket = mockk<DefaultWebSocketSession>(relaxed = true)
+    every { socket.coroutineContext } returns (Dispatchers.Unconfined + SupervisorJob())
     coEvery { socket.send(any<Frame>()) } coAnswers {
         val frame = firstArg<Frame>()
         if (frame is Frame.Text) captured.add(frame.readText())

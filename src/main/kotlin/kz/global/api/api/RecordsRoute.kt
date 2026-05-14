@@ -6,11 +6,13 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kz.global.api.db.tables.*
+import kz.global.api.storage.R2Client
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
+import org.koin.ktor.ext.getKoin
 import kotlin.uuid.Uuid
 
 @Serializable
@@ -81,19 +83,29 @@ fun Route.recordsRoute() {
                 val recordId = runCatching { Uuid.parse(call.parameters["id"]!!) }.getOrNull()
                     ?: return@delete call.respond(HttpStatusCode.BadRequest, "Invalid UUID")
 
-                val mapName = suspendTransaction() {
+                val r2Client = call.getKoin().get<R2Client>()
+
+                val outcome: Pair<Boolean, String?> = suspendTransaction() {
                     val row = MapRecordsTable.selectAll()
                         .where { MapRecordsTable.id eq recordId }
                         .singleOrNull()
-                        ?: return@suspendTransaction null
+                        ?: return@suspendTransaction Pair(false, null)
 
-                    val mapName = row[MapRecordsTable.mapName]
-                    MapRecordsTable.deleteWhere { id eq recordId }
-                    mapName
+                    val replayKey = row[MapRecordsTable.replayR2Key]
+                    MapRecordsTable.deleteWhere { MapRecordsTable.id eq recordId }
+                    Pair(true, replayKey)
                 }
 
-                if (mapName != null) call.respond(HttpStatusCode.NoContent)
-                else call.respond(HttpStatusCode.NotFound)
+                if (!outcome.first) {
+                    call.respond(HttpStatusCode.NotFound)
+                    return@delete
+                }
+
+                outcome.second?.let { key ->
+                    runCatching { r2Client.delete(key) }
+                }
+
+                call.respond(HttpStatusCode.NoContent)
             }
         }
     }

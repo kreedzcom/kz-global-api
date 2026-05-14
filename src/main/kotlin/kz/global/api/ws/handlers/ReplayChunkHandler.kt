@@ -9,7 +9,9 @@ import kz.global.api.ws.GameServerSession
 import kz.global.api.ws.MsgType
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
@@ -51,28 +53,37 @@ class ReplayChunkHandler(
                     suspendTransaction {
                         MapRecordsTable
                             .selectAll()
-                            .where { MapRecordsTable.localUid eq chunk.localUid }
+                            .where {
+                                (MapRecordsTable.localUid eq chunk.localUid) and
+                                    (MapRecordsTable.serverId eq session.serverId)
+                            }
                             .singleOrNull()
                             ?.get(MapRecordsTable.id)
                     }
                 }
 
                 if (recordId == null) {
-                    log.warn("Server {}: replay complete for uid={} but no matching record", session.serverId, chunk.localUid)
+                    log.warn(
+                        "Server {}: replay complete for uid={} but no matching record for this server",
+                        session.serverId,
+                        chunk.localUid,
+                    )
                     session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = false))
                     return
                 }
 
-                runCatching { replayService.storeReplay(recordId, chunk.localUid, assembled) }
-                    .onSuccess {
-                        session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = true))
-                        log.info("Server {}: replay stored for record {}", session.serverId, recordId)
-                    }
-                    .onFailure { e ->
-                        metrics.replayUploadFailures.increment()
-                        log.error("Server {}: failed to store replay for {}: {}", session.serverId, recordId, e.message)
-                        session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = false))
-                    }
+                session.socket.launch {
+                    runCatching { replayService.storeReplay(recordId, chunk.localUid, assembled) }
+                        .onSuccess {
+                            session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = true))
+                            log.info("Server {}: replay stored for record {}", session.serverId, recordId)
+                        }
+                        .onFailure { e ->
+                            metrics.replayUploadFailures.increment()
+                            log.error("Server {}: failed to store replay for {}: {}", session.serverId, recordId, e.message)
+                            session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = false))
+                        }
+                }
             }
         }
     }

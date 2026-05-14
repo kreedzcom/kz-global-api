@@ -74,6 +74,26 @@ class HelloHandlerTest {
     )
 
     @Test
+    fun `handle accepts Windows plugin checksum when Linux differs`() = runTest {
+        val linuxChecksum = ByteArray(16) { 1 }
+        val windowsChecksum = ByteArray(16) { 2 }
+        transaction {
+            PluginVersionsTable.insert {
+                it[semver] = "2.0.0-win"
+                it[checksumLinux] = linuxChecksum
+                it[checksumWindows] = windowsChecksum
+                it[PluginVersionsTable.isCutoff] = false
+            }
+        }
+        val windowsHex = windowsChecksum.joinToString("") { "%02x".format(it) }
+        val (session, sent) = mockSession()
+
+        handler().handle(session, envelope("2.0.0-win", windowsHex, "kz_inferno"))
+
+        assertEquals(MsgType.HELLO_ACK, sent().single().msgType)
+    }
+
+    @Test
     fun `handle sends HELLO_ACK for valid plugin version and checksum`() = runTest {
         insertPluginVersion("1.0.0", validChecksum)
         val (session, sent) = mockSession()

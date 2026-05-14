@@ -1,10 +1,16 @@
 package kz.global.api.api
 
+import aws.sdk.kotlin.services.s3.S3Client
+import aws.sdk.kotlin.services.s3.model.DeleteObjectRequest
+import aws.sdk.kotlin.services.s3.model.DeleteObjectResponse
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.server.testing.*
+import io.mockk.*
+import kz.global.api.config.R2Config
 import kz.global.api.db.tables.*
+import kz.global.api.storage.R2Client
 import kz.global.api.support.TestDatabase
 import kz.global.api.support.adminAuth
 import kz.global.api.support.setupAdminRoutes
@@ -15,6 +21,7 @@ import org.jetbrains.exposed.v1.jdbc.insertIgnore
 import org.jetbrains.exposed.v1.jdbc.upsert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
+import org.jetbrains.exposed.v1.jdbc.update
 import org.jetbrains.exposed.v1.core.eq
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
@@ -230,6 +237,38 @@ class RecordsRouteTest {
     }
 
     // ─── DELETE /admin/records/{id} ───────────────────────────────────────────
+
+    @Test
+    fun `DELETE record removes replay from R2 when key present`() = testApplication {
+        val config = R2Config(
+            endpoint = "https://r2.example.com",
+            accessKeyId = "key",
+            secretAccessKey = "secret",
+            bucket = "test-bucket",
+        )
+        val mockS3 = mockk<S3Client>(relaxed = true)
+        coEvery { mockS3.deleteObject(any<DeleteObjectRequest>()) } returns DeleteObjectResponse {}
+        val r2 = R2Client(config, mockS3)
+        setupAdminRoutes(r2Client = r2)
+        val id = insertRecord()
+        val r2Key = "replays/$id.krpz"
+        transaction {
+            MapRecordsTable.update({ MapRecordsTable.id eq id }) {
+                it[MapRecordsTable.replayR2Key] = r2Key
+            }
+        }
+
+        val response = client.delete("/admin/records/$id") {
+            header(HttpHeaders.Authorization, adminAuth())
+        }
+
+        assertEquals(HttpStatusCode.NoContent, response.status)
+        coVerify(exactly = 1) {
+            mockS3.deleteObject(match<DeleteObjectRequest> {
+                it.bucket == "test-bucket" && it.key == r2Key
+            })
+        }
+    }
 
     @Test
     fun `DELETE record removes it from the database`() = testApplication {

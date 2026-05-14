@@ -33,7 +33,11 @@ const val TEST_ADMIN_KEY = "test-admin-bearer-key"
  * Does NOT call [DatabaseFactory.connect] — relies on the global Exposed
  * connection already established by [TestDatabase.connect] in @BeforeAll.
  */
-fun ApplicationTestBuilder.setupAdminRoutes(adminKey: String = TEST_ADMIN_KEY) {
+fun ApplicationTestBuilder.setupAdminRoutes(
+    adminKey: String = TEST_ADMIN_KEY,
+    r2Client: R2Client = mockk(relaxed = true),
+) {
+    val r2Binding = r2Client
     application {
         val meterRegistry = SimpleMeterRegistry()
 
@@ -56,7 +60,7 @@ fun ApplicationTestBuilder.setupAdminRoutes(adminKey: String = TEST_ADMIN_KEY) {
                 single { KzMetrics(get(), get()) }
                 single { KzEventBus() }
                 single { AuditLogger() }
-                single<R2Client> { mockk(relaxed = true) }
+                single<R2Client> { r2Binding }
                 single { RecordService(get(), get(), get()) }
                 single { ReplayService(get(), get()) }
                 single<BroadcastService> { mockk(relaxed = true) }

@@ -16,6 +16,8 @@ import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 import org.slf4j.LoggerFactory
+import java.sql.SQLException
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 sealed class RecordResult {
@@ -58,54 +60,87 @@ class RecordService(
         pluginVersionId: Int,
         payload: AddRecordPayload,
     ): Any = withContext(ioDispatcher) {
-        suspendTransaction {
-        val existing = MapRecordsTable
-            .selectAll()
-            .where { MapRecordsTable.localUid eq payload.localUid }
-            .singleOrNull()
+        try {
+            suspendTransaction {
+                val existing = MapRecordsTable
+                    .selectAll()
+                    .where { MapRecordsTable.localUid eq payload.localUid }
+                    .singleOrNull()
 
-        if (existing != null) {
-            return@suspendTransaction RecordResult.Duplicate(existing[MapRecordsTable.id])
+                if (existing != null) {
+                    return@suspendTransaction RecordResult.Duplicate(existing[MapRecordsTable.id])
+                }
+
+                val minTime = MapMinimumTimesTable
+                    .selectAll()
+                    .where { MapMinimumTimesTable.mapName eq payload.mapName }
+                    .singleOrNull()
+                    ?.get(MapMinimumTimesTable.minTimeMs)
+
+                if (minTime != null && payload.timeMs < minTime) {
+                    log.warn("Rejected: {}ms below minimum {}ms for map {}", payload.timeMs, minTime, payload.mapName)
+                    return@suspendTransaction RecordResult.Rejected("Time below map minimum")
+                }
+
+                MapsTable.insertIgnore { it[name] = payload.mapName }
+
+                val now = Clock.System.now()
+                PlayersTable.insertIgnore {
+                    it[steamid] = payload.steamid
+                    it[lastNickname] = payload.steamid
+                    it[lastSeenAt] = now
+                }
+
+                val recordId = uuidV7()
+                MapRecordsTable.insert {
+                    it[id] = recordId
+                    it[MapRecordsTable.serverId] = serverId
+                    it[playerSteamid] = payload.steamid
+                    it[mapName] = payload.mapName
+                    it[timeMs] = payload.timeMs
+                    it[teleports] = payload.teleports
+                    it[localUid] = payload.localUid
+                    it[MapRecordsTable.pluginVersionId] = pluginVersionId
+                }
+
+                val isPbNub = updateBestNub(payload.steamid, payload.mapName, recordId, payload.timeMs)
+                val isPbPro = if (payload.teleports == 0) {
+                    updateBestPro(payload.steamid, payload.mapName, recordId, payload.timeMs)
+                } else false
+
+                val isWrNub = isPbNub && updateWorldRecord(payload.mapName, "nub", recordId, payload.timeMs)
+                val isWrPro = isPbPro && updateWorldRecord(payload.mapName, "pro", recordId, payload.timeMs)
+
+                log.info("Accepted: {} record={} map={} time={}ms tp={}", payload.steamid, recordId, payload.mapName, payload.timeMs, payload.teleports)
+                metrics.recordsSubmitted.increment()
+                if (isWrNub || isWrPro) metrics.worldRecords.increment()
+                LeaderboardResult(recordId, isPbNub || isPbPro, isWrNub, isWrPro)
+            }
+        } catch (e: Exception) {
+            if (!isUniqueConstraintViolation(e)) throw e
+            val dupId = suspendTransaction {
+                MapRecordsTable
+                    .selectAll()
+                    .where { MapRecordsTable.localUid eq payload.localUid }
+                    .singleOrNull()
+                    ?.get(MapRecordsTable.id)
+            } ?: throw e
+            RecordResult.Duplicate(dupId)
         }
+    }
 
-        val minTime = MapMinimumTimesTable
-            .selectAll()
-            .where { MapMinimumTimesTable.mapName eq payload.mapName }
-            .singleOrNull()
-            ?.get(MapMinimumTimesTable.minTimeMs)
-
-        if (minTime != null && payload.timeMs < minTime) {
-            log.warn("Rejected: {}ms below minimum {}ms for map {}", payload.timeMs, minTime, payload.mapName)
-            return@suspendTransaction RecordResult.Rejected("Time below map minimum")
+    private fun isUniqueConstraintViolation(t: Throwable): Boolean {
+        var x: Throwable? = t
+        while (x != null) {
+            if (x is SQLException && x.sqlState == "23505") return true
+            val name = x::class.java.name
+            if (name == "org.h2.jdbc.JdbcSQLIntegrityConstraintViolationException") {
+                val m = x.message ?: return false
+                if (m.contains("Unique", ignoreCase = true) || m.contains("unique", ignoreCase = true)) return true
+            }
+            x = x.cause
         }
-
-        MapsTable.insertIgnore { it[name] = payload.mapName }
-
-        val recordId = uuidV7()
-        MapRecordsTable.insert {
-            it[id] = recordId
-            it[MapRecordsTable.serverId] = serverId
-            it[playerSteamid] = payload.steamid
-            it[mapName] = payload.mapName
-            it[timeMs] = payload.timeMs
-            it[teleports] = payload.teleports
-            it[localUid] = payload.localUid
-            it[MapRecordsTable.pluginVersionId] = pluginVersionId
-        }
-
-        val isPbNub = updateBestNub(payload.steamid, payload.mapName, recordId, payload.timeMs)
-        val isPbPro = if (payload.teleports == 0) {
-            updateBestPro(payload.steamid, payload.mapName, recordId, payload.timeMs)
-        } else false
-
-        val isWrNub = isPbNub && updateWorldRecord(payload.mapName, "nub", recordId, payload.timeMs)
-        val isWrPro = isPbPro && updateWorldRecord(payload.mapName, "pro", recordId, payload.timeMs)
-
-        log.info("Accepted: {} record={} map={} time={}ms tp={}", payload.steamid, recordId, payload.mapName, payload.timeMs, payload.teleports)
-        metrics.recordsSubmitted.increment()
-        if (isWrNub || isWrPro) metrics.worldRecords.increment()
-        LeaderboardResult(recordId, isPbNub || isPbPro, isWrNub, isWrPro)
-        }
+        return false
     }
 
     private fun updateBestNub(steamid: String, mapName: String, recordId: Uuid, timeMs: Long): Boolean =

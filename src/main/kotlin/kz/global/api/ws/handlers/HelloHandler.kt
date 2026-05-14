@@ -34,7 +34,8 @@ class HelloHandler(
                 .selectAll()
                 .where {
                     (PluginVersionsTable.semver eq payload.pluginVersion) and
-                    (PluginVersionsTable.checksumLinux eq checksumBytes)
+                        ((PluginVersionsTable.checksumLinux eq checksumBytes) or
+                            (PluginVersionsTable.checksumWindows eq checksumBytes))
                 }
                 .singleOrNull()
         }
