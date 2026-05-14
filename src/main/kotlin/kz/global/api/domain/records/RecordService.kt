@@ -260,8 +260,8 @@ class RecordService(
             put("steamid", payload.steamid)
             put("map_name", payload.mapName)
             put("time_ms", payload.timeMs)
-            put("gochecks", payload.gochecks)
             put("checkpoints", payload.checkpoints)
+            put("gochecks", payload.gochecks)
             put("is_pb", result.isPb)
         })
     }
