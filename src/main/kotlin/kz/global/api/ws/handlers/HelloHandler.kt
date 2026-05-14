@@ -51,6 +51,7 @@ class HelloHandler(
             return
         }
 
+        session.pluginVersionId = pluginVersion[PluginVersionsTable.id]
         session.currentMap = payload.mapName
         log.info("Server {} hello: plugin={} map={}", session.serverId, payload.pluginVersion, payload.mapName)
 

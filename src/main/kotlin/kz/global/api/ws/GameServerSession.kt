@@ -16,6 +16,9 @@ class GameServerSession(
     val serverId: Int,
     val socket: DefaultWebSocketSession,
 ) {
+    /** Set by [HelloHandler] after plugin version + checksum validation; required for ADD_RECORD. */
+    @Volatile var pluginVersionId: Int = 0
+
     @Volatile var currentMap: String = ""
     private val _players = mutableMapOf<String, ConnectedPlayer>()
     private val mutex = Mutex()

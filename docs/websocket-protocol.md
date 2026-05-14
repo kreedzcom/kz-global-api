@@ -9,7 +9,7 @@ Authorization: Bearer <32-char hex access key>
 ```
 
 The key is the one returned when the server was registered via `POST /admin/servers`.  
-A missing or invalid key closes the connection immediately with `4401 Unauthorized`.
+A missing or invalid key closes the WebSocket with Ktor close code **`1008` (`VIOLATED_POLICY`)** and a short reason string (for example `Invalid or inactive token`).
 
 ---
 
@@ -50,12 +50,11 @@ Binary frames are used exclusively for **replay chunk uploads** (see below).
 | `msg_type` | Name | Description |
 |------------|------|-------------|
 | `101` | `HELLO_ACK` | Connection accepted; includes heartbeat interval and optional map info |
-| `102` | `MAP_INFO` | WR data for a map |
+| `102` | `MAP_INFO` | WR data for a map; also pushed to all servers on the same map when a world record changes (`msg_id` is `0`) |
 | `103` | `COURSE_TOP` | Leaderboard entries |
 | `104` | `PLAYER_RECORDS` | A player's personal times |
 | `105` | `RECORD_ACK` | Confirmation of a submitted run |
 | `106` | `FILE_ACK` | Confirmation of a replay upload |
-| `107` | `WR_BROADCAST` | Pushed automatically when a WR is beaten (no request needed) |
 | `199` | `ERROR` | Error response |
 
 ---
@@ -66,7 +65,7 @@ Binary frames are used exclusively for **replay chunk uploads** (see below).
 
 ```json
 {
-  "plugin_version": "1.2.3",
+  "plugin_version": "<semver>",
   "plugin_checksum": "aabbccdd...",
   "map_name": "kz_canyon"
 }
@@ -85,7 +84,7 @@ Binary frames are used exclusively for **replay chunk uploads** (see below).
 }
 ```
 
-`map_info` is present only when world records exist for the current map (see `MAP_INFO` below).
+`map_info` is included whenever the map exists in the API database (see `MAP_INFO` below). WR-related fields may be `null` if no world record exists yet for that category.
 
 ---
 
@@ -123,7 +122,7 @@ Fields are `null` when no world record exists for that category.
 {
   "steamid":    "STEAM_0:0:12345",
   "nickname":   "xX_speedrunner_Xx",
-  "ip_address": "1.2.3.4"
+  "ip_address": "198.51.100.10"
 }
 ```
 
@@ -226,19 +225,9 @@ Only non-flagged records are returned.
 
 ---
 
-### `WR_BROADCAST` (107)
+### World record push (uses `MAP_INFO` / 102)
 
-Sent by the API automatically to all connected servers on the same map when a world record is beaten:
-
-```json
-{
-  "map_name": "kz_canyon",
-  "wr_nub_steamid":  "STEAM_0:0:12345",
-  "wr_nub_time_ms":  35000,
-  "wr_pro_steamid":  "STEAM_0:0:67890",
-  "wr_pro_time_ms":  28100
-}
-```
+When a world record changes, the API pushes **`MAP_INFO` (`msg_type` 102)** with `msg_id` `0` to every connected game server currently on that map (same JSON shape as the `WANT_MAP_INFO` response). There is no separate `WR_BROADCAST` message type in the current implementation.
 
 ### `ERROR` (199)
 
@@ -253,17 +242,18 @@ Sent by the API automatically to all connected servers on the same map when a wo
 After a run is accepted with `RECORD_ACK`, the plugin may upload the replay as a sequence of binary frames. Each frame has this layout:
 
 ```
-┌────────────────── 88-byte header (little-endian) ──────────────────┐
-│  local_uid[64]   │  unused[8]  │  crc32[4]  │  index[4]  │ total[4] │ pad[4] │
-└──────────────────────────────────────────────────────────────────────┘
-│  data (variable length)                                              │
-└──────────────────────────────────────────────────────────────────────┘
+┌──────────── 92-byte ws_uchunk_header (packed, little-endian) ─────────────┐
+│ local_uid[64] │ id u64 │ crc32 i32 │ chunk_index u64 │ chunk_total u64 │
+└────────────────────────────────────────────────────────────────────────────┘
+│  data (variable length)                                                      │
+└────────────────────────────────────────────────────────────────────────────┘
 ```
 
 - `local_uid` — null-terminated UTF-8, same value used in `ADD_RECORD`.
+- `id` — legacy uint64 field from the plugin; ignored by the API.
 - `crc32` — CRC32 checksum of the `data` portion only.
-- `index` — 0-based chunk index.
-- `total` — total number of chunks in this upload.
+- `chunk_index` — 0-based chunk index (uint64 on the wire; must fit in a 32-bit range for the API).
+- `chunk_total` — total number of chunks in this upload (uint64 on the wire; bounded server-side).
 
 Once all chunks are received and CRC-validated, the API assembles them, verifies the ZSTD magic header (`0x28 0xB5 0x2F 0xFD`), and stores the result in R2.
 
@@ -281,15 +271,15 @@ Once all chunks are received and CRC-validated, the API assembles them, verifies
 
 ```
 WS connect
-  └─ auth check (Bearer token)
-  └─ register in ConnectedServersRegistry
-  └─ HELLO expected within first frame
+  └─ auth check (Bearer token) → resolves game server id
+  └─ register in ConnectedServersRegistry (session bound to that id)
+  └─ HELLO expected as first application message
        └─ plugin version / checksum validation
-       └─ HELLO_ACK
+       └─ HELLO_ACK (binds plugin_version_id for later ADD_RECORD)
   └─ normal message exchange
   └─ server disconnect / error
        └─ unregister from ConnectedServersRegistry
        └─ graceful close on API shutdown via ConnectedServersRegistry.closeAll()
 ```
 
-The API does **not** enforce a HELLO timeout; if the plugin never sends HELLO, the session stays open but unauthenticated at the application level (no game-server id bound). Handlers that need the server id will reject frames gracefully with an `ERROR` response.
+The API does **not** enforce a HELLO timeout; if the plugin never sends `HELLO`, the TCP/WebSocket session stays open and the game server id from the token remains registered, but **`ADD_RECORD` is rejected** until a valid `HELLO` has been processed (plugin version id is unset).

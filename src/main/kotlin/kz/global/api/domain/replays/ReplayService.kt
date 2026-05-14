@@ -17,14 +17,15 @@ import java.util.zip.CRC32
 import kotlin.uuid.Uuid
 import kotlin.time.Duration.Companion.days
 
-// Binary header layout (packed struct ws_uchunk_header, 88 bytes):
-//   local_uid[64]:  char[64]  — null-terminated string
-//   id:             uint64    — unused legacy field (8 bytes, offset 64)
-//   chunk_checksum: uint32    — CRC32 of this chunk's data (4 bytes, offset 72)
-//   chunk_index:    uint64    — 0-based (8 bytes, offset 76)
-//   chunk_total:    uint64    — total chunks (8 bytes, offset 80, but header is only 88 bytes so it fits)
-private const val HEADER_SIZE = 88
+// Binary header: packed `ws_uchunk_header` from cs16kz `kz_ws.h` (pragma pack 1), 92 bytes:
+//   local_uid[64]:  char[64]
+//   id:             uint64   (offset 64, unused on wire)
+//   chunk_checksum: int32    CRC32 of chunk data (offset 72)
+//   chunk_index:    uint64   0-based (offset 76)
+//   chunk_total:    uint64   (offset 84)
+private const val HEADER_SIZE = 92
 private const val LOCAL_UID_LEN = 64
+private const val MAX_REPLAY_CHUNKS = 50_000
 
 data class ReplayChunk(
     val localUid: String,
@@ -68,6 +69,7 @@ class ReplayService(
     private val metrics: KzMetrics,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
+
     private val log = LoggerFactory.getLogger(ReplayService::class.java)
     private val uploads = java.util.concurrent.ConcurrentHashMap<String, UploadState>()
     private val ZSTD_MAGIC = byteArrayOf(0x28.toByte(), 0xB5.toByte(), 0x2F.toByte(), 0xFD.toByte())
@@ -77,36 +79,59 @@ class ReplayService(
 
         val localUid = String(bytes, 0, LOCAL_UID_LEN).trimEnd('\u0000')
         val checksum = readUInt32LE(bytes, 72)
-        val index = readUInt64LE(bytes, 76).toInt()
-        val total = readUInt64LE(bytes, 80).toInt()
-        val data = bytes.copyOfRange(HEADER_SIZE, bytes.size)
+        val indexLong = readUInt64LE(bytes, 76)
+        val totalLong = readUInt64LE(bytes, 84)
+        if (indexLong !in 0..Int.MAX_VALUE.toLong() || totalLong !in 1..Int.MAX_VALUE.toLong()) return null
+        val index = indexLong.toInt()
+        val total = totalLong.toInt()
+        if (total !in (index + 1)..MAX_REPLAY_CHUNKS) return null
 
+        val data = bytes.copyOfRange(HEADER_SIZE, bytes.size)
         return ReplayChunk(localUid, checksum, index, total, data)
     }
 
-    fun receive(chunk: ReplayChunk): ByteArray? {
+    fun receive(chunk: ReplayChunk): ReplayAssemblyResult {
+        if (chunk.total !in 1..MAX_REPLAY_CHUNKS || chunk.index < 0 || chunk.index >= chunk.total) {
+            uploads.remove(chunk.localUid)
+            return ReplayAssemblyResult.Rejected.InvalidChunk
+        }
+
         val state = uploads.getOrPut(chunk.localUid) { UploadState(arrayOfNulls(chunk.total)) }
+        if (state.chunks.size != chunk.total) {
+            uploads.remove(chunk.localUid)
+            return ReplayAssemblyResult.Rejected.InvalidChunk
+        }
 
         val crc = CRC32()
         crc.update(chunk.data)
         if (crc.value != chunk.checksum) {
             log.warn("CRC32 mismatch for chunk {}/{} uid={}", chunk.index, chunk.total, chunk.localUid)
-            return null
+            uploads.remove(chunk.localUid)
+            return ReplayAssemblyResult.Rejected.CrcMismatch
         }
 
         state.chunks[chunk.index] = chunk.data
 
-        if (state.chunks.none { it == null }) {
-            uploads.remove(chunk.localUid)
-            val assembled = state.chunks.fold(ByteArray(0)) { acc, b -> acc + b!! }
-
-            if (!assembled.startsWith(ZSTD_MAGIC)) {
-                log.warn("Assembled replay for {} does not start with ZSTD magic", chunk.localUid)
-                return null
-            }
-            return assembled
+        if (state.chunks.any { it == null }) {
+            return ReplayAssemblyResult.Pending
         }
-        return null
+
+        uploads.remove(chunk.localUid)
+
+        val totalBytes = state.chunks.sumOf { it!!.size }
+        val assembled = ByteArray(totalBytes)
+        var pos = 0
+        for (part in state.chunks) {
+            val b = part!!
+            b.copyInto(assembled, pos)
+            pos += b.size
+        }
+
+        if (!assembled.startsWith(ZSTD_MAGIC)) {
+            log.warn("Assembled replay for {} does not start with ZSTD magic", chunk.localUid)
+            return ReplayAssemblyResult.Rejected.BadZstdMagic
+        }
+        return ReplayAssemblyResult.Complete(assembled)
     }
 
     suspend fun storeReplay(recordId: Uuid, localUid: String, bytes: ByteArray) {
@@ -153,9 +178,9 @@ class ReplayService(
                     .where { MapRecordsTable.replayR2Key.isNotNull() }
                     .filter { row ->
                         row[MapRecordsTable.id] !in wrIds &&
-                        row[MapRecordsTable.createdAt] < cutoff
+                            row[MapRecordsTable.createdAt] < cutoff
                     }
-                    .mapNotNull { row ->
+                    .map { row ->
                         row[MapRecordsTable.id] to row[MapRecordsTable.replayR2Key]!!
                     }
             }
@@ -185,4 +210,5 @@ class ReplayService(
         if (this.size < prefix.size) return false
         return prefix.indices.all { this[it] == prefix[it] }
     }
+
 }

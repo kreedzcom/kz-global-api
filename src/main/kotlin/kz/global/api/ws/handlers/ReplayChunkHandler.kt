@@ -1,6 +1,7 @@
 package kz.global.api.ws.handlers
 
 import kz.global.api.db.tables.MapRecordsTable
+import kz.global.api.domain.replays.ReplayAssemblyResult
 import kz.global.api.domain.replays.ReplayService
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.ws.FileAckPayload
@@ -31,34 +32,49 @@ class ReplayChunkHandler(
 
         log.debug("Server {}: chunk {}/{} for uid={}", session.serverId, chunk.index + 1, chunk.total, chunk.localUid)
 
-        val assembled = replayService.receive(chunk) ?: return
-
-        val recordId = withContext(ioDispatcher) {
-            suspendTransaction {
-                MapRecordsTable
-                    .selectAll()
-                    .where { MapRecordsTable.localUid eq chunk.localUid }
-                    .singleOrNull()
-                    ?.get(MapRecordsTable.id)
-            }
-        }
-
-        if (recordId == null) {
-            log.warn("Server {}: replay complete for uid={} but no matching record", session.serverId, chunk.localUid)
-            session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = false))
-            return
-        }
-
-        runCatching { replayService.storeReplay(recordId, chunk.localUid, assembled) }
-            .onSuccess {
-                session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = true))
-                log.info("Server {}: replay stored for record {}", session.serverId, recordId)
-            }
-            .onFailure { e ->
-                metrics.replayUploadFailures.increment()
-                log.error("Server {}: failed to store replay for {}: {}", session.serverId, recordId, e.message)
+        when (val assembly = replayService.receive(chunk)) {
+            is ReplayAssemblyResult.Pending -> return
+            is ReplayAssemblyResult.Rejected -> {
+                when (assembly) {
+                    is ReplayAssemblyResult.Rejected.CrcMismatch,
+                    is ReplayAssemblyResult.Rejected.BadZstdMagic,
+                    -> metrics.replayUploadFailures.increment()
+                    is ReplayAssemblyResult.Rejected.InvalidChunk -> Unit
+                }
                 session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = false))
+                return
             }
+            is ReplayAssemblyResult.Complete -> {
+                val assembled = assembly.bytes
+
+                val recordId = withContext(ioDispatcher) {
+                    suspendTransaction {
+                        MapRecordsTable
+                            .selectAll()
+                            .where { MapRecordsTable.localUid eq chunk.localUid }
+                            .singleOrNull()
+                            ?.get(MapRecordsTable.id)
+                    }
+                }
+
+                if (recordId == null) {
+                    log.warn("Server {}: replay complete for uid={} but no matching record", session.serverId, chunk.localUid)
+                    session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = false))
+                    return
+                }
+
+                runCatching { replayService.storeReplay(recordId, chunk.localUid, assembled) }
+                    .onSuccess {
+                        session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = true))
+                        log.info("Server {}: replay stored for record {}", session.serverId, recordId)
+                    }
+                    .onFailure { e ->
+                        metrics.replayUploadFailures.increment()
+                        log.error("Server {}: failed to store replay for {}: {}", session.serverId, recordId, e.message)
+                        session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = false))
+                    }
+            }
+        }
     }
 
 }

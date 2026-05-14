@@ -19,7 +19,7 @@ class ReplayServiceTest {
 
     @Test
     fun `parseChunk returns null when payload is shorter than header`() {
-        assertNull(service.parseChunk(ByteArray(87)))
+        assertNull(service.parseChunk(ByteArray(91)))
     }
 
     @Test
@@ -85,23 +85,23 @@ class ReplayServiceTest {
     // ─── receive ─────────────────────────────────────────────────────────────
 
     @Test
-    fun `receive returns null on CRC mismatch`() {
+    fun `receive returns CrcMismatch on CRC mismatch`() {
         val data = ByteArray(8) { 0x42 }
         val parsed = service.parseChunk(buildChunk("uid", data, 0, 1, badCrc = true))!!
 
         val result = service.receive(parsed)
 
-        assertNull(result)
+        assertIs<ReplayAssemblyResult.Rejected.CrcMismatch>(result)
     }
 
     @Test
-    fun `receive returns null when not all chunks have arrived`() {
+    fun `receive returns Pending when not all chunks have arrived`() {
         val data = ByteArray(4) { it.toByte() }
         val chunk = service.parseChunk(buildChunk("multi-uid", data, 0, 3))!!
 
         val result = service.receive(chunk)
 
-        assertNull(result)
+        assertSame(ReplayAssemblyResult.Pending, result)
     }
 
     @Test
@@ -111,8 +111,8 @@ class ReplayServiceTest {
 
         val result = service.receive(parsed)
 
-        assertNotNull(result)
-        assertContentEquals(ZSTD_MAGIC, result.take(4).toByteArray())
+        val complete = assertIs<ReplayAssemblyResult.Complete>(result)
+        assertContentEquals(ZSTD_MAGIC, complete.bytes.take(4).toByteArray())
     }
 
     @Test
@@ -124,21 +124,20 @@ class ReplayServiceTest {
         val c0 = service.parseChunk(buildChunk(uid, ZSTD_MAGIC + part0, 0, 2))!!
         val c1 = service.parseChunk(buildChunk(uid, part1, 1, 2))!!
 
-        assertNull(service.receive(c0)) // first chunk not yet complete
-        val assembled = service.receive(c1)
+        assertSame(ReplayAssemblyResult.Pending, service.receive(c0))
+        val assembled = assertIs<ReplayAssemblyResult.Complete>(service.receive(c1))
 
-        assertNotNull(assembled)
-        assertContentEquals(fullExpected, assembled)
+        assertContentEquals(fullExpected, assembled.bytes)
     }
 
     @Test
-    fun `receive returns null when assembled data does not start with ZSTD magic`() {
+    fun `receive returns BadZstdMagic when assembled data does not start with ZSTD magic`() {
         val notZstd = ByteArray(20) { 0xAA.toByte() }
         val parsed = service.parseChunk(buildChunk("bad-magic-uid", notZstd, 0, 1))!!
 
         val result = service.receive(parsed)
 
-        assertNull(result)
+        assertIs<ReplayAssemblyResult.Rejected.BadZstdMagic>(result)
     }
 
     @Test
@@ -146,12 +145,12 @@ class ReplayServiceTest {
         val uid = "cleanup-uid"
         val data = ZSTD_MAGIC + ByteArray(10)
         val first = service.parseChunk(buildChunk(uid, data, 0, 1))!!
-        service.receive(first) // consume first upload
+        assertIs<ReplayAssemblyResult.Complete>(service.receive(first))
 
         val second = service.parseChunk(buildChunk(uid, data, 0, 1))!!
         val result = service.receive(second)
 
-        assertNotNull(result)
+        assertIs<ReplayAssemblyResult.Complete>(result)
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -160,15 +159,14 @@ class ReplayServiceTest {
         val ZSTD_MAGIC = byteArrayOf(0x28.toByte(), 0xB5.toByte(), 0x2F.toByte(), 0xFD.toByte())
 
         /**
-         * Builds a raw binary frame matching [ws_uchunk_header] (88 bytes) followed by [data].
+         * Builds a raw binary frame matching packed `ws_uchunk_header` from cs16kz `kz_ws.h` (92 bytes) + [data].
          *
          * Layout (all little-endian):
-         *   offset  0: local_uid[64] (null-terminated)
-         *   offset 64: id uint64 (unused, zeros)
-         *   offset 72: chunk_checksum uint32 (CRC32 of data)
-         *   offset 76: chunk_index uint32
-         *   offset 80: chunk_total uint32
-         *   offset 84: padding (4 bytes, zeros)
+         *   offset  0: local_uid[64]
+         *   offset 64: id uint64 (zeros)
+         *   offset 72: chunk_checksum int32 / CRC32 of data
+         *   offset 76: chunk_index uint64
+         *   offset 84: chunk_total uint64
          */
         fun buildChunk(
             localUid: String,
@@ -180,20 +178,26 @@ class ReplayServiceTest {
             val crc = CRC32().also { it.update(data) }.value
             val checksum = if (badCrc) crc xor 0xFF else crc
 
-            val header = ByteArray(88)
+            val header = ByteArray(92)
             val uidBytes = localUid.toByteArray(Charsets.UTF_8)
             uidBytes.copyInto(header, 0, 0, minOf(uidBytes.size, 63))
             writeUInt32LE(header, 72, checksum)
-            writeUInt32LE(header, 76, index.toLong())
-            writeUInt32LE(header, 80, total.toLong())
+            writeUInt64LE(header, 76, index.toLong())
+            writeUInt64LE(header, 84, total.toLong())
             return header + data
         }
 
         private fun writeUInt32LE(buf: ByteArray, offset: Int, value: Long) {
-            buf[offset]     = (value         and 0xFF).toByte()
-            buf[offset + 1] = ((value shr  8) and 0xFF).toByte()
+            buf[offset] = (value and 0xFF).toByte()
+            buf[offset + 1] = ((value shr 8) and 0xFF).toByte()
             buf[offset + 2] = ((value shr 16) and 0xFF).toByte()
             buf[offset + 3] = ((value shr 24) and 0xFF).toByte()
+        }
+
+        private fun writeUInt64LE(buf: ByteArray, offset: Int, value: Long) {
+            for (i in 0..7) {
+                buf[offset + i] = ((value shr (i * 8)) and 0xFF).toByte()
+            }
         }
     }
 }

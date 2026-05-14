@@ -11,7 +11,7 @@ The API validates the plugin build on connect. Add two fields to the `hello` pay
   "msg_type": 1,
   "msg_id": 1,
   "data": {
-    "plugin_version": "1.2.3",
+    "plugin_version": "<semver>",
     "plugin_checksum": "deadbeefdeadbeefdeadbeefdeadbeef",
     "map_name": "kz_longjumps2"
   }
@@ -43,7 +43,9 @@ Required for the nub/pro leaderboard split:
 
 `teleports == 0` → pro run; `teleports > 0` → nub run.
 
-## 3. Handle `get_replay` (new message type 9)
+## 3. Handle `get_replay` (new message type 9) — **not implemented in the API yet**
+
+> **Note:** The server does not expose handlers or `MsgType` entries for these messages today. Treat this section as the **intended** plugin-side contract for a future API release.
 
 When the plugin wants the WR replay for a map (e.g. on map load if no local `.krpz` found):
 
@@ -59,7 +61,9 @@ When the plugin wants the WR replay for a map (e.g. on map load if no local `.kr
 
 Download the file directly from the URL using the existing HTTP client, save as the local `.krpz` path, then load it for bot playback.
 
-## 4. Handle `del_record` (new message type 10)
+## 4. Handle `del_record` (new message type 10) — **not implemented in the API yet**
+
+> Same status as §3: no server handler exists yet.
 
 When an admin deletes or invalidates a record, the API broadcasts:
 
@@ -69,7 +73,7 @@ When an admin deletes or invalidates a record, the API broadcasts:
 
 The plugin should delete `maps/kz_longjumps2.krpz` from disk and reset the replay bot if it was currently playing that replay.
 
-## 5. Replay download on map load
+## 5. Replay download on map load — **blocked until §3–4 are implemented**
 
 After receiving `HelloAck` or `MapChange` response:
 1. Check if a local `.krpz` exists for the current map.

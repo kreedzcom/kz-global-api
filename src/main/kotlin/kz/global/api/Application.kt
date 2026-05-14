@@ -14,6 +14,9 @@ import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.micrometer.prometheusmetrics.PrometheusConfig
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
 import kz.global.api.api.*
 import kz.global.api.auth.configureAdminAuth
 import kz.global.api.config.loadAppConfig
@@ -24,8 +27,8 @@ import kz.global.api.domain.replays.ReplayService
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.ws.ConnectedServersRegistry
 import kz.global.api.ws.gameServerWsRoute
-import kotlinx.coroutines.runBlocking
-import org.koin.ktor.ext.inject
+import org.koin.core.qualifier.named
+import org.koin.ktor.ext.*
 import org.koin.ktor.plugin.Koin
 import org.slf4j.LoggerFactory
 import kotlin.time.Duration.Companion.seconds
@@ -36,7 +39,6 @@ fun main() {
 }
 
 fun Application.module() {
-
     val log = LoggerFactory.getLogger("Application")
     val config = loadAppConfig()
 
@@ -77,6 +79,8 @@ fun Application.module() {
     monitor.subscribe(ApplicationStopPreparing) {
         log.info("Shutting down — closing all WebSocket sessions...")
         runBlocking { registry.closeAll() }
+        runCatching { getKoin().get<CoroutineScope>(named("applicationCoroutineScope")).cancel() }
+            .onFailure { e -> log.warn("Failed to cancel application scope: {}", e.message) }
     }
 
     routing {
@@ -92,5 +96,4 @@ fun Application.module() {
         recordsRoute()
         mapTimesRoute()
     }
-
 }

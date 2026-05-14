@@ -11,6 +11,10 @@ import kz.global.api.events.KzEventBus
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.storage.R2Client
 import kz.global.api.ws.ConnectedServersRegistry
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import org.koin.core.qualifier.named
 import org.koin.dsl.module
 
 fun appModule(config: AppConfig, prometheusRegistry: PrometheusMeterRegistry) = module {
@@ -21,8 +25,11 @@ fun appModule(config: AppConfig, prometheusRegistry: PrometheusMeterRegistry) = 
     single { KzEventBus() }
     single { AuditLogger() }
     single { ConnectedServersRegistry() }
+    single(named("applicationCoroutineScope")) {
+        CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    }
     single { KzMetrics(get(), get()) }
     single { RecordService(get(), get(), get()) }
     single { ReplayService(get(), get()) }
-    single { BroadcastService(get(), get()) }
+    single { BroadcastService(get(), get(), Dispatchers.IO, get(named("applicationCoroutineScope"))) }
 }

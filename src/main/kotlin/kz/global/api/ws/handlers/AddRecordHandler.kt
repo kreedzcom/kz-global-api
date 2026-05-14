@@ -1,13 +1,9 @@
 package kz.global.api.ws.handlers
 
-import kz.global.api.db.tables.PluginVersionsTable
 import kz.global.api.domain.records.RecordResult
 import kz.global.api.domain.records.RecordService
 import kz.global.api.ws.*
-import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.json.Json
-import org.jetbrains.exposed.v1.jdbc.selectAll
-import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 import org.slf4j.LoggerFactory
 
 class AddRecordHandler(private val recordService: RecordService) {
@@ -18,8 +14,10 @@ class AddRecordHandler(private val recordService: RecordService) {
     suspend fun handle(session: GameServerSession, envelope: WsEnvelope) {
         val payload = json.decodeFromJsonElement(AddRecordPayload.serializer(), envelope.data)
 
-        val pluginVersionId = suspendTransaction {
-            PluginVersionsTable.selectAll().lastOrNull()?.get(PluginVersionsTable.id) ?: 1
+        val pluginVersionId = session.pluginVersionId
+        if (pluginVersionId <= 0) {
+            session.sendError(envelope.msgId, "HELLO must be sent first with a valid plugin_version / plugin_checksum")
+            return
         }
 
         when (val result = recordService.submit(session.serverId, pluginVersionId, payload)) {

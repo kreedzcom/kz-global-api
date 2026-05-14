@@ -47,21 +47,21 @@ The service is written in **Kotlin / Ktor (Netty)** and exposes two distinct sur
 
 ## Technology stack
 
-| Concern              | Choice                            |
-|----------------------|-----------------------------------|
-| Language             | Kotlin                            |
-| HTTP / WS server     | Ktor (Netty)                      |
-| Serialization        | kotlinx.serialization             |
-| ORM                  | Exposed                           |
-| Migrations           | Flyway                            |
-| Connection pool      | HikariCP                          |
-| Database             | PostgreSQL 17 (prod) / H2 (tests) |
-| Dependency injection | Koin                              |
-| Object storage       | AWS Kotlin SDK v2 (Cloudflare R2) |
-| Metrics              | Micrometer + Prometheus           |
-| Logging              | Logback + Logstash JSON encoder   |
-| Build                | Gradle                            |
-| JVM                  | Java 25 (Foojay toolchain)        |
+| Concern                 | Choice                                                                          |
+|-------------------------|---------------------------------------------------------------------------------|
+| Language                | Kotlin                                                                          |
+| HTTP / WebSocket server | Ktor (Netty engine)                                                             |
+| Serialization           | kotlinx.serialization (JSON)                                                    |
+| ORM                     | Exposed (typed SQL DSL)                                                         |
+| Migrations              | Flyway (`src/main/resources/db/migration/`)                                     |
+| Connection pool         | HikariCP                                                                        |
+| Database                | PostgreSQL in production; H2 in tests (PostgreSQL compatibility mode)           |
+| Dependency injection    | Koin                                                                            |
+| Object storage          | AWS SDK for Kotlin (S3-compatible client) against Cloudflare R2                 |
+| Metrics                 | Micrometer with Prometheus text scrape endpoint                                 |
+| Logging                 | Logback; optional Logstash JSON encoder for structured logs                     |
+| Build                   | Gradle (Kotlin DSL; dependency coordinates live in `gradle/libs.versions.toml`) |
+| JVM                     | Toolchain-managed Java release (see `build.gradle.kts`)                         |
 
 ---
 
@@ -201,7 +201,7 @@ Events are emitted **after** the database transaction commits to keep them consi
 
 ## Replay pipeline
 
-Replays are uploaded as a sequence of binary WebSocket frames, each containing an 88-byte header followed by a data payload.
+Replays are uploaded as a sequence of binary WebSocket frames, each containing a 92-byte `ws_uchunk_header` (packed, matching the cs16kz plugin) followed by a data payload.
 
 **Header layout** (little-endian):
 
@@ -249,24 +249,24 @@ Every significant mutation (server created, record deleted, plugin cutoff, etc.)
 
 All configuration is injected through environment variables consumed by `application.conf` (HOCON).
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `DATABASE_URL` | ✓ | JDBC URL (`jdbc:postgresql://host/db`) |
-| `DATABASE_POOL_SIZE` | | HikariCP pool size (default 10) |
-| `R2_ENDPOINT` | ✓ | Cloudflare R2 S3-compatible endpoint URL |
-| `R2_ACCESS_KEY_ID` | ✓ | R2 access key |
-| `R2_SECRET_ACCESS_KEY` | ✓ | R2 secret key |
-| `R2_BUCKET` | ✓ | Bucket name for replay storage |
-| `ADMIN_BEARER_KEY` | ✓ | Static bearer token for admin API |
-| `PORT` | | HTTP port (default 8080) |
-| `LOG_FORMAT` | | Set to `json` for structured logging |
+| Variable               | Required | Description                              |
+|------------------------|----------|------------------------------------------|
+| `DATABASE_URL`         | ✓        | JDBC URL (`jdbc:postgresql://host/db`)   |
+| `DATABASE_POOL_SIZE`   |          | HikariCP pool size (default 10)          |
+| `R2_ENDPOINT`          | ✓        | Cloudflare R2 S3-compatible endpoint URL |
+| `R2_ACCESS_KEY_ID`     | ✓        | R2 access key                            |
+| `R2_SECRET_ACCESS_KEY` | ✓        | R2 secret key                            |
+| `R2_BUCKET`            | ✓        | Bucket name for replay storage           |
+| `ADMIN_BEARER_KEY`     | ✓        | Static bearer token for admin API        |
+| `PORT`                 |          | HTTP port (default 8080)                 |
+| `LOG_FORMAT`           |          | Set to `json` for structured logging     |
 
 ---
 
 ## Deployment
 
-The application is packaged as a fat JAR built with `./gradlew buildFatJar` and shipped in a Docker image based on `eclipse-temurin:25-jre-alpine`.
+The application is packaged as a fat JAR (`./gradlew buildFatJar`) and shipped in a Docker image; the base image tag is defined in the repository `Dockerfile`.
 
-`docker-compose.yml` provides a local stack: the API container + `postgres:17-alpine` with a named volume and a health check.
+`docker-compose.yml` runs the API alongside PostgreSQL for local development; database image and tags are pinned there, not duplicated here.
 
-For production, place a **Traefik v3** reverse proxy in front (see `kz-global-infra`) to handle TLS termination and routing.
+For production, place a reverse proxy such as **Traefik** in front (see `kz-global-infra`) to handle TLS termination and routing.

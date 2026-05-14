@@ -32,6 +32,7 @@ class AddRecordHandlerTest {
     private val handler = AddRecordHandler(recordService)
 
     private var serverId = 0
+    private var pluginVersionId = 0
     private val steamid = "STEAM_0:0:11111"
 
     @BeforeAll
@@ -47,11 +48,11 @@ class AddRecordHandlerTest {
                 it[name] = "ar-server"
                 it[accessKey] = ByteArray(16)
             }[GameServersTable.id]
-            PluginVersionsTable.insert {
+            pluginVersionId = PluginVersionsTable.insert {
                 it[semver] = "1.0.0"
                 it[checksumLinux] = ByteArray(16)
                 it[checksumWindows] = ByteArray(16)
-            }
+            }[PluginVersionsTable.id]
             val sid = steamid
             PlayersTable.upsert(PlayersTable.steamid) {
                 it[PlayersTable.steamid] = sid
@@ -68,7 +69,7 @@ class AddRecordHandlerTest {
 
     @Test
     fun `handle sends RECORD_ACK on accepted run`() = runTest {
-        val (session, sent) = mockSession(serverId)
+        val (session, sent) = mockSession(serverId, pluginVersionId)
 
         handler.handle(session, envelope(AddRecordPayload(steamid, "kz_canyon", 30_000L, 0, "uid-ok")))
 
@@ -79,7 +80,7 @@ class AddRecordHandlerTest {
 
     @Test
     fun `handle echoes local_uid in RECORD_ACK`() = runTest {
-        val (session, sent) = mockSession(serverId)
+        val (session, sent) = mockSession(serverId, pluginVersionId)
 
         handler.handle(session, envelope(AddRecordPayload(steamid, "kz_canyon", 30_000L, 0, "uid-echo")))
 
@@ -88,7 +89,7 @@ class AddRecordHandlerTest {
 
     @Test
     fun `handle echoes msgId in RECORD_ACK`() = runTest {
-        val (session, sent) = mockSession(serverId)
+        val (session, sent) = mockSession(serverId, pluginVersionId)
 
         handler.handle(session, envelope(AddRecordPayload(steamid, "kz_canyon", 30_000L, 0, "uid-id"), msgId = 77L))
 
@@ -97,10 +98,10 @@ class AddRecordHandlerTest {
 
     @Test
     fun `handle sends RECORD_ACK with is_pb false on duplicate submission`() = runTest {
-        val (session, _) = mockSession(serverId)
+        val (session, _) = mockSession(serverId, pluginVersionId)
         handler.handle(session, envelope(AddRecordPayload(steamid, "kz_canyon", 30_000L, 0, "uid-dup")))
 
-        val (session2, sent2) = mockSession(serverId)
+        val (session2, sent2) = mockSession(serverId, pluginVersionId)
         handler.handle(session2, envelope(AddRecordPayload(steamid, "kz_canyon", 30_000L, 0, "uid-dup")))
 
         val frame = sent2().single()
@@ -119,9 +120,18 @@ class AddRecordHandlerTest {
                 it[updatedAt] = kotlin.time.Clock.System.now()
             }
         }
-        val (session, sent) = mockSession(serverId)
+        val (session, sent) = mockSession(serverId, pluginVersionId)
 
         handler.handle(session, envelope(AddRecordPayload(steamid, "kz_fast", 1_000L, 0, "uid-rejected")))
+
+        assertEquals(MsgType.ERROR, sent().single().msgType)
+    }
+
+    @Test
+    fun `handle sends ERROR when HELLO was not completed`() = runTest {
+        val (session, sent) = mockSession(serverId, pluginVersionId = 0)
+
+        handler.handle(session, envelope(AddRecordPayload(steamid, "kz_canyon", 30_000L, 0, "uid-no-hello")))
 
         assertEquals(MsgType.ERROR, sent().single().msgType)
     }
