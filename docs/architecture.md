@@ -249,17 +249,19 @@ Every significant mutation (server created, record deleted, plugin cutoff, etc.)
 
 All configuration is injected through environment variables consumed by `application.conf` (HOCON).
 
-| Variable               | Required | Description                              |
-|------------------------|----------|------------------------------------------|
-| `DATABASE_URL`         | ✓        | JDBC URL (`jdbc:postgresql://host/db`)   |
-| `DATABASE_POOL_SIZE`   |          | HikariCP pool size (default 10)          |
-| `R2_ENDPOINT`          | ✓        | Cloudflare R2 S3-compatible endpoint URL |
-| `R2_ACCESS_KEY_ID`     | ✓        | R2 access key                            |
-| `R2_SECRET_ACCESS_KEY` | ✓        | R2 secret key                            |
-| `R2_BUCKET`            | ✓        | Bucket name for replay storage           |
-| `ADMIN_BEARER_KEY`     | ✓        | Static bearer token for admin API        |
-| `PORT`                 |          | HTTP port (default 8080)                 |
-| `LOG_FORMAT`           |          | Set to `json` for structured logging     |
+| Variable               | Required | Description                                      |
+|------------------------|----------|--------------------------------------------------|
+| `DATABASE_URL`         | ✓        | JDBC URL (`jdbc:postgresql://host/db`)           |
+| `POSTGRES_USER`        |          | DB user for Hikari (set with Docker Compose)     |
+| `POSTGRES_PASSWORD`    |          | DB password for Hikari (set with Docker Compose) |
+| `DATABASE_POOL_SIZE`   |          | HikariCP pool size (default 10)                  |
+| `R2_ENDPOINT`          | ✓        | Cloudflare R2 S3-compatible endpoint URL         |
+| `R2_ACCESS_KEY_ID`     | ✓        | R2 access key                                    |
+| `R2_SECRET_ACCESS_KEY` | ✓        | R2 secret key                                    |
+| `R2_BUCKET`            | ✓        | Bucket name for replay storage                   |
+| `ADMIN_BEARER_KEY`     | ✓        | Static bearer token for admin API                |
+| `PORT`                 |          | HTTP port (default 8080)                         |
+| `LOG_FORMAT`           |          | Set to `json` for structured logging             |
 
 ---
 
