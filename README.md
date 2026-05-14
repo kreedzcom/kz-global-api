@@ -1,5 +1,10 @@
 # kz-global-api
 
+[![CI](https://github.com/kreedzcom/kz-global-api/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kreedzcom/kz-global-api/actions/workflows/ci.yml)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=kreedzcom_kz-global-api&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=kreedzcom_kz-global-api)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=kreedzcom_kz-global-api&metric=coverage)](https://sonarcloud.io/summary/new_code?id=kreedzcom_kz-global-api)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=kreedzcom_kz-global-api&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=kreedzcom_kz-global-api)
+
 Global record backend for CS 1.6 KZ (Kreedz). Game servers running the [cs16kz](https://github.com/nquinquenel/cs16kz) plugin connect via WebSocket to submit runs, fetch map records, and receive world record broadcasts.
 
 ## Getting started
