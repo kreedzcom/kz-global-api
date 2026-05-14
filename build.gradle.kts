@@ -1,3 +1,6 @@
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import org.gradle.api.file.DuplicatesStrategy
+
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
@@ -107,4 +110,13 @@ ktor {
     fatJar {
         archiveFileName.set("kz-global-api.jar")
     }
+}
+
+// Flyway + flyway-database-postgresql both ship META-INF/services/org.flywaydb.core.extensibility.Plugin.
+// Shadow merges must combine them or the fat jar loses classpath: location handlers (Flyway 11.13+ / Ktor 3.3+).
+tasks.withType<ShadowJar>().configureEach {
+    mergeServiceFiles {
+        include("META-INF/services/org.flywaydb.core.extensibility.Plugin")
+    }
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
 }
