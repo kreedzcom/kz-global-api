@@ -98,20 +98,31 @@ class RecordService(
                     it[playerSteamid] = payload.steamid
                     it[mapName] = payload.mapName
                     it[timeMs] = payload.timeMs
-                    it[teleports] = payload.teleports
+                    it[checkpoints] = payload.checkpoints
+                    it[gochecks] = payload.gochecks
                     it[localUid] = payload.localUid
                     it[MapRecordsTable.pluginVersionId] = pluginVersionId
                 }
 
                 val isPbNub = updateBestNub(payload.steamid, payload.mapName, recordId, payload.timeMs)
-                val isPbPro = if (payload.teleports == 0) {
+                val isPbPro = if (payload.gochecks == 0) {
                     updateBestPro(payload.steamid, payload.mapName, recordId, payload.timeMs)
-                } else false
+                } else {
+                    false
+                }
 
                 val isWrNub = isPbNub && updateWorldRecord(payload.mapName, "nub", recordId, payload.timeMs)
                 val isWrPro = isPbPro && updateWorldRecord(payload.mapName, "pro", recordId, payload.timeMs)
 
-                log.info("Accepted: {} record={} map={} time={}ms tp={}", payload.steamid, recordId, payload.mapName, payload.timeMs, payload.teleports)
+                log.info(
+                    "Accepted: {} record={} map={} time={}ms checkpoints={} gochecks={}",
+                    payload.steamid,
+                    recordId,
+                    payload.mapName,
+                    payload.timeMs,
+                    payload.checkpoints,
+                    payload.gochecks,
+                )
                 metrics.recordsSubmitted.increment()
                 if (isWrNub || isWrPro) metrics.worldRecords.increment()
                 LeaderboardResult(recordId, isPbNub || isPbPro, isWrNub, isWrPro)
@@ -231,7 +242,16 @@ class RecordService(
 
     @Suppress("unused")
     private suspend fun emitEvents(result: LeaderboardResult, payload: AddRecordPayload, serverId: Int) {
-        eventBus.emit(KzEvent.NewRecord(result.recordId, payload.steamid, payload.mapName, payload.timeMs, payload.teleports))
+        eventBus.emit(
+            KzEvent.NewRecord(
+                result.recordId,
+                payload.steamid,
+                payload.mapName,
+                payload.timeMs,
+                payload.checkpoints,
+                payload.gochecks,
+            ),
+        )
         if (result.isWrNub) eventBus.emit(KzEvent.NewWorldRecord(result.recordId, payload.steamid, payload.mapName, payload.timeMs, "nub"))
         if (result.isWrPro) eventBus.emit(KzEvent.NewWorldRecord(result.recordId, payload.steamid, payload.mapName, payload.timeMs, "pro"))
 
@@ -240,7 +260,8 @@ class RecordService(
             put("steamid", payload.steamid)
             put("map_name", payload.mapName)
             put("time_ms", payload.timeMs)
-            put("teleports", payload.teleports)
+            put("gochecks", payload.gochecks)
+            put("checkpoints", payload.checkpoints)
             put("is_pb", result.isPb)
         })
     }

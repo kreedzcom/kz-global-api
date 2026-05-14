@@ -244,6 +244,8 @@ class ReplayServiceDbTest {
                 it[playerSteamid] = sid
                 it[mapName] = map
                 it[timeMs] = 30_000L
+                it[checkpoints] = 0
+                it[gochecks] = 0
                 it[MapRecordsTable.localUid] = localUid
                 it[pluginVersionId] = pvId
             }

@@ -51,7 +51,15 @@ class CourseTopHandlerTest {
         data = Json.encodeToJsonElement(WantCourseTopPayload(map, category, limit, offset)),
     )
 
-    private fun insertPlayerWithBestRecord(steamid: String, nickname: String, map: String, timeMs: Long, teleports: Int, localUid: String): kotlin.uuid.Uuid {
+    private fun insertPlayerWithBestRecord(
+        steamid: String,
+        nickname: String,
+        map: String,
+        timeMs: Long,
+        localUid: String,
+        checkpoints: Int,
+        gochecks: Int,
+    ): kotlin.uuid.Uuid {
         val id = uuidV7()
         val srvId = serverId
         val pvId = pluginVersionId
@@ -68,11 +76,13 @@ class CourseTopHandlerTest {
                 it[playerSteamid] = sid
                 it[mapName] = map
                 it[MapRecordsTable.timeMs] = timeMs
-                it[MapRecordsTable.teleports] = teleports
+                it[MapRecordsTable.checkpoints] = checkpoints
+                it[MapRecordsTable.gochecks] = gochecks
                 it[MapRecordsTable.localUid] = localUid
                 it[MapRecordsTable.pluginVersionId] = pvId
             }
-            if (teleports > 0) {
+            val proEligible = gochecks == 0
+            if (!proEligible) {
                 BestNubRecordsTable.insert {
                     it[BestNubRecordsTable.playerSteamid] = sid
                     it[BestNubRecordsTable.mapName] = map
@@ -115,8 +125,8 @@ class CourseTopHandlerTest {
 
     @Test
     fun `handle returns nub leaderboard sorted by time ascending`() = runTest {
-        insertPlayerWithBestRecord("STEAM_0:0:1", "Slow", "kz_top", 40_000L, teleports = 3, "uid-slow")
-        insertPlayerWithBestRecord("STEAM_0:0:2", "Fast", "kz_top", 25_000L, teleports = 1, "uid-fast")
+        insertPlayerWithBestRecord("STEAM_0:0:1", "Slow", "kz_top", 40_000L, "uid-slow", 12, 3)
+        insertPlayerWithBestRecord("STEAM_0:0:2", "Fast", "kz_top", 25_000L, "uid-fast", 12, 1)
         val (session, sent) = mockSession()
 
         handler.handle(session, envelope("kz_top", "nub"))
@@ -130,9 +140,10 @@ class CourseTopHandlerTest {
     }
 
     @Test
-    fun `handle returns pro leaderboard (teleports=0 only)`() = runTest {
-        insertPlayerWithBestRecord("STEAM_0:0:1", "ProPlayer", "kz_pro", 30_000L, teleports = 0, "uid-pro")
-        insertPlayerWithBestRecord("STEAM_0:0:2", "NubPlayer", "kz_pro", 20_000L, teleports = 5, "uid-nub")
+    fun `handle returns pro leaderboard only pro-eligible runs`() = runTest {
+        insertPlayerWithBestRecord("STEAM_0:0:1", "ProPlayer", "kz_pro", 30_000L, "uid-pro", 12, 0)
+        insertPlayerWithBestRecord("STEAM_0:0:2", "NubPlayer", "kz_pro", 20_000L, "uid-nub", 12, 5)
+        insertPlayerWithBestRecord("STEAM_0:0:3", "GcNub", "kz_pro", 15_000L, "uid-gc", 12, 2)
         val (session, sent) = mockSession()
 
         handler.handle(session, envelope("kz_pro", "pro"))
@@ -145,7 +156,7 @@ class CourseTopHandlerTest {
     @Test
     fun `handle respects limit parameter`() = runTest {
         repeat(5) { i ->
-            insertPlayerWithBestRecord("STEAM_0:0:$i", "Player$i", "kz_limit", (30_000L + i * 1000), teleports = 1, "uid-limit-$i")
+            insertPlayerWithBestRecord("STEAM_0:0:$i", "Player$i", "kz_limit", (30_000L + i * 1000), "uid-limit-$i", 12, 1)
         }
         val (session, sent) = mockSession()
 
@@ -157,9 +168,9 @@ class CourseTopHandlerTest {
 
     @Test
     fun `handle respects offset parameter for pagination`() = runTest {
-        insertPlayerWithBestRecord("STEAM_0:0:1", "First", "kz_page", 10_000L, teleports = 1, "uid-page-1")
-        insertPlayerWithBestRecord("STEAM_0:0:2", "Second", "kz_page", 20_000L, teleports = 1, "uid-page-2")
-        insertPlayerWithBestRecord("STEAM_0:0:3", "Third", "kz_page", 30_000L, teleports = 1, "uid-page-3")
+        insertPlayerWithBestRecord("STEAM_0:0:1", "First", "kz_page", 10_000L, "uid-page-1", 12, 1)
+        insertPlayerWithBestRecord("STEAM_0:0:2", "Second", "kz_page", 20_000L, "uid-page-2", 12, 1)
+        insertPlayerWithBestRecord("STEAM_0:0:3", "Third", "kz_page", 30_000L, "uid-page-3", 12, 1)
         val (session, sent) = mockSession()
 
         handler.handle(session, envelope("kz_page", "nub", limit = 2, offset = 1))

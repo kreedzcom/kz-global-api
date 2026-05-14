@@ -88,8 +88,11 @@ data class AddRecordPayload(
     val steamid: String,
     @SerialName("map_name") val mapName: String,
     @SerialName("time_ms") val timeMs: Long,
-    val teleports: Int = 0,
     @SerialName("local_uid") val localUid: String,
+    /** Checkpoint count (aggregate touches; not split times). Required; if [gochecks] is positive, this must be positive too. */
+    val checkpoints: Int,
+    /** Go-check count; `0` = eligible for pro leaderboard as well as nub. */
+    val gochecks: Int,
 )
 
 // ─── Outbound payloads ───────────────────────────────────────────────────────
@@ -134,7 +137,8 @@ data class CourseTopEntry(
     val steamid: String,
     val nickname: String,
     @SerialName("time_ms") val timeMs: Long,
-    val teleports: Int,
+    val checkpoints: Int,
+    val gochecks: Int,
 )
 
 @Serializable
@@ -148,8 +152,9 @@ data class CourseTopPayload(
 data class PlayerRecordEntry(
     @SerialName("map_name") val mapName: String,
     @SerialName("time_ms") val timeMs: Long,
-    val teleports: Int,
     @SerialName("record_id") val recordId: String,
+    val checkpoints: Int,
+    val gochecks: Int,
 )
 
 @Serializable

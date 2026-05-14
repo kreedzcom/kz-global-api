@@ -73,7 +73,7 @@ class RecordServiceTest {
             val sid = steamid
             PlayersTable.deleteWhere { PlayersTable.steamid eq sid }
         }
-        val payload = AddRecordPayload(steamid, "kz_canyon", 32_000L, 0, "uid-nojoin")
+        val payload = AddRecordPayload(steamid, "kz_canyon", 32_000L, "uid-nojoin", 0, 0)
 
         val result = service.submit(serverId, pluginVersionId, payload)
 
@@ -86,7 +86,7 @@ class RecordServiceTest {
 
     @Test
     fun `submit accepts a valid pro run and returns Accepted`() = runTest {
-        val payload = AddRecordPayload(steamid, "kz_canyon", 30_000L, 0, "uid-001")
+        val payload = AddRecordPayload(steamid, "kz_canyon", 30_000L, "uid-001", 0, 0)
 
         val result = service.submit(serverId, pluginVersionId, payload)
 
@@ -95,20 +95,76 @@ class RecordServiceTest {
     }
 
     @Test
-    fun `submit accepts a nub run with teleports`() = runTest {
-        val payload = AddRecordPayload(steamid, "kz_canyon", 35_000L, 5, "uid-002")
+    fun `submit accepts a nub run with gochecks`() = runTest {
+        val payload = AddRecordPayload(steamid, "kz_canyon", 35_000L, "uid-002", 6, 5)
 
         val result = service.submit(serverId, pluginVersionId, payload)
 
         assertIs<RecordResult.Accepted>(result)
         assertTrue(result.isPb)
+    }
+
+    @Test
+    fun `submit stores checkpoints when gochecks is zero`() = runTest {
+        val payload = AddRecordPayload(
+            steamid = steamid,
+            mapName = "kz_gc_pro",
+            timeMs = 22_000L,
+            localUid = "uid-gc-pro",
+            checkpoints = 5,
+            gochecks = 0,
+        )
+
+        val result = service.submit(serverId, pluginVersionId, payload)
+
+        assertIs<RecordResult.Accepted>(result)
+        transaction {
+            assertNotNull(
+                WorldRecordsTable.selectAll()
+                    .where { (WorldRecordsTable.mapName eq "kz_gc_pro") and (WorldRecordsTable.category eq "pro") }
+                    .singleOrNull(),
+            )
+            val row = MapRecordsTable.selectAll()
+                .where { MapRecordsTable.localUid eq "uid-gc-pro" }
+                .single()
+            assertEquals(0, row[MapRecordsTable.gochecks])
+            assertEquals(5, row[MapRecordsTable.checkpoints])
+        }
+    }
+
+    @Test
+    fun `submit with positive gochecks skips pro world record`() = runTest {
+        val payload = AddRecordPayload(
+            steamid = steamid,
+            mapName = "kz_gc_nub",
+            timeMs = 22_000L,
+            localUid = "uid-gc-nub",
+            checkpoints = 4,
+            gochecks = 2,
+        )
+
+        val result = service.submit(serverId, pluginVersionId, payload)
+
+        assertIs<RecordResult.Accepted>(result)
+        transaction {
+            assertNotNull(
+                WorldRecordsTable.selectAll()
+                    .where { (WorldRecordsTable.mapName eq "kz_gc_nub") and (WorldRecordsTable.category eq "nub") }
+                    .singleOrNull(),
+            )
+            assertNull(
+                WorldRecordsTable.selectAll()
+                    .where { (WorldRecordsTable.mapName eq "kz_gc_nub") and (WorldRecordsTable.category eq "pro") }
+                    .singleOrNull(),
+            )
+        }
     }
 
     // ─── Idempotency ─────────────────────────────────────────────────────────
 
     @Test
     fun `submit is idempotent for duplicate local_uid`() = runTest {
-        val payload = AddRecordPayload(steamid, "kz_canyon", 30_000L, 0, "uid-dup")
+        val payload = AddRecordPayload(steamid, "kz_canyon", 30_000L, "uid-dup", 0, 0)
         val first = service.submit(serverId, pluginVersionId, payload) as RecordResult.Accepted
 
         val second = service.submit(serverId, pluginVersionId, payload)
@@ -130,7 +186,7 @@ class RecordServiceTest {
                 it[updatedAt] = Clock.System.now()
             }
         }
-        val payload = AddRecordPayload(steamid, "kz_fast", 5_000L, 0, "uid-rejected")
+        val payload = AddRecordPayload(steamid, "kz_fast", 5_000L, "uid-rejected", 0, 0)
 
         val result = service.submit(serverId, pluginVersionId, payload)
 
@@ -148,7 +204,7 @@ class RecordServiceTest {
                 it[updatedAt] = Clock.System.now()
             }
         }
-        val payload = AddRecordPayload(steamid, "kz_exact", 10_000L, 0, "uid-exact")
+        val payload = AddRecordPayload(steamid, "kz_exact", 10_000L, "uid-exact", 0, 0)
 
         val result = service.submit(serverId, pluginVersionId, payload)
 
@@ -159,7 +215,7 @@ class RecordServiceTest {
 
     @Test
     fun `pro run sets both nub and pro world records`() = runTest {
-        val payload = AddRecordPayload(steamid, "kz_wr", 20_000L, 0, "uid-wr")
+        val payload = AddRecordPayload(steamid, "kz_wr", 20_000L, "uid-wr", 0, 0)
 
         service.submit(serverId, pluginVersionId, payload)
 
@@ -174,8 +230,8 @@ class RecordServiceTest {
     }
 
     @Test
-    fun `nub run with TPs sets only nub world record`() = runTest {
-        val payload = AddRecordPayload(steamid, "kz_nub", 40_000L, 3, "uid-nub-wr")
+    fun `nub run with gochecks sets only nub world record`() = runTest {
+        val payload = AddRecordPayload(steamid, "kz_nub", 40_000L, "uid-nub-wr", 10, 3)
 
         service.submit(serverId, pluginVersionId, payload)
 
@@ -197,7 +253,7 @@ class RecordServiceTest {
 
     @Test
     fun `faster run replaces world record`() = runTest {
-        val slow = AddRecordPayload(steamid, "kz_race", 50_000L, 0, "uid-slow")
+        val slow = AddRecordPayload(steamid, "kz_race", 50_000L, "uid-slow", 0, 0)
         service.submit(serverId, pluginVersionId, slow)
         val steamid2 = "STEAM_0:0:99999"
         transaction {
@@ -206,7 +262,7 @@ class RecordServiceTest {
                 it[lastNickname] = "Faster"
             }
         }
-        val fast = AddRecordPayload(steamid2, "kz_race", 30_000L, 0, "uid-fast")
+        val fast = AddRecordPayload(steamid2, "kz_race", 30_000L, "uid-fast", 0, 0)
 
         val fastResult = service.submit(serverId, pluginVersionId, fast) as RecordResult.Accepted
 
@@ -220,7 +276,7 @@ class RecordServiceTest {
 
     @Test
     fun `slower run does not replace world record`() = runTest {
-        val fast = AddRecordPayload(steamid, "kz_hold", 20_000L, 0, "uid-hold-fast")
+        val fast = AddRecordPayload(steamid, "kz_hold", 20_000L, "uid-hold-fast", 0, 0)
         val fastResult = service.submit(serverId, pluginVersionId, fast) as RecordResult.Accepted
         val steamid2 = "STEAM_0:0:77777"
         transaction {
@@ -229,7 +285,7 @@ class RecordServiceTest {
                 it[lastNickname] = "Slower"
             }
         }
-        val slow = AddRecordPayload(steamid2, "kz_hold", 40_000L, 0, "uid-hold-slow")
+        val slow = AddRecordPayload(steamid2, "kz_hold", 40_000L, "uid-hold-slow", 0, 0)
 
         val slowResult = service.submit(serverId, pluginVersionId, slow) as RecordResult.Accepted
 
@@ -244,9 +300,9 @@ class RecordServiceTest {
 
     @Test
     fun `pro run slower than player nub run does not overwrite nub best`() = runTest {
-        val nub = AddRecordPayload(steamid, "kz_mix", 20_000L, 5, "uid-mix-nub")
+        val nub = AddRecordPayload(steamid, "kz_mix", 20_000L, "uid-mix-nub", 8, 5)
         val nubResult = service.submit(serverId, pluginVersionId, nub) as RecordResult.Accepted
-        val pro = AddRecordPayload(steamid, "kz_mix", 25_000L, 0, "uid-mix-pro")
+        val pro = AddRecordPayload(steamid, "kz_mix", 25_000L, "uid-mix-pro", 0, 0)
 
         val proResult = service.submit(serverId, pluginVersionId, pro) as RecordResult.Accepted
 

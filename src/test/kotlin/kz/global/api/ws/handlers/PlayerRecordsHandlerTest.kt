@@ -58,7 +58,7 @@ class PlayerRecordsHandlerTest {
         data = Json.encodeToJsonElement(WantPlayerRecordsPayload(steamid, map)),
     )
 
-    private fun insertRecord(map: String, timeMs: Long, teleports: Int, localUid: String, flagged: Boolean = false) {
+    private fun insertRecord(map: String, timeMs: Long, checkpoints: Int, gochecks: Int, localUid: String, flagged: Boolean = false) {
         val id = uuidV7()
         val srvId = serverId
         val pvId = pluginVersionId
@@ -71,7 +71,8 @@ class PlayerRecordsHandlerTest {
                 it[playerSteamid] = sid
                 it[mapName] = map
                 it[MapRecordsTable.timeMs] = timeMs
-                it[MapRecordsTable.teleports] = teleports
+                it[MapRecordsTable.checkpoints] = checkpoints
+                it[MapRecordsTable.gochecks] = gochecks
                 it[MapRecordsTable.localUid] = localUid
                 it[MapRecordsTable.pluginVersionId] = pvId
                 it[MapRecordsTable.flagged] = flagged
@@ -100,8 +101,8 @@ class PlayerRecordsHandlerTest {
 
     @Test
     fun `handle returns all non-flagged records for the player on the map`() = runTest {
-        insertRecord("kz_canyon", 30_000L, 0, "uid-pro")
-        insertRecord("kz_canyon", 35_000L, 3, "uid-nub")
+        insertRecord("kz_canyon", 30_000L, 0, 0, "uid-pro")
+        insertRecord("kz_canyon", 35_000L, 6, 5, "uid-nub")
         val (session, sent) = mockSession()
 
         handler.handle(session, envelope("kz_canyon"))
@@ -112,8 +113,8 @@ class PlayerRecordsHandlerTest {
 
     @Test
     fun `handle excludes flagged records`() = runTest {
-        insertRecord("kz_canyon", 20_000L, 0, "uid-ok", flagged = false)
-        insertRecord("kz_canyon", 25_000L, 0, "uid-flagged", flagged = true)
+        insertRecord("kz_canyon", 20_000L, 0, 0, "uid-ok", flagged = false)
+        insertRecord("kz_canyon", 25_000L, 0, 0, "uid-flagged", flagged = true)
         val (session, sent) = mockSession()
 
         handler.handle(session, envelope("kz_canyon"))
@@ -125,8 +126,8 @@ class PlayerRecordsHandlerTest {
 
     @Test
     fun `handle returns records sorted by time ascending`() = runTest {
-        insertRecord("kz_sort", 40_000L, 0, "uid-slow")
-        insertRecord("kz_sort", 25_000L, 0, "uid-fast")
+        insertRecord("kz_sort", 40_000L, 0, 0, "uid-slow")
+        insertRecord("kz_sort", 25_000L, 0, 0, "uid-fast")
         val (session, sent) = mockSession()
 
         handler.handle(session, envelope("kz_sort"))
@@ -138,7 +139,7 @@ class PlayerRecordsHandlerTest {
 
     @Test
     fun `handle does not return records for a different map`() = runTest {
-        insertRecord("kz_other", 30_000L, 0, "uid-other")
+        insertRecord("kz_other", 30_000L, 0, 0, "uid-other")
         val (session, sent) = mockSession()
 
         handler.handle(session, envelope("kz_canyon"))

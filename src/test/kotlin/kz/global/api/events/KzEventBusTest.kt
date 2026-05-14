@@ -19,7 +19,7 @@ class KzEventBusTest {
         yield() // let the collector register before emitting
 
         val id = uuidV7()
-        bus.emit(KzEvent.NewRecord(id, "STEAM_0:0:1", "kz_canyon", 30_000L, 0))
+        bus.emit(KzEvent.NewRecord(id, "STEAM_0:0:1", "kz_canyon", 30_000L, 0, 0))
         advanceUntilIdle()
         job.cancel()
 
@@ -29,7 +29,8 @@ class KzEventBusTest {
         assertEquals("STEAM_0:0:1", event.playerSteamid)
         assertEquals("kz_canyon", event.mapName)
         assertEquals(30_000L, event.timeMs)
-        assertEquals(0, event.teleports)
+        assertEquals(0, event.checkpoints)
+        assertEquals(0, event.gochecks)
     }
 
     @Test
@@ -60,7 +61,7 @@ class KzEventBusTest {
         yield() // let both collectors register
 
         repeat(5) {
-            bus.emit(KzEvent.NewRecord(uuidV7(), "STEAM_0:0:1", "kz_map", 1_000L * it, 0))
+            bus.emit(KzEvent.NewRecord(uuidV7(), "STEAM_0:0:1", "kz_map", 1_000L * it, 0, 0))
         }
         advanceUntilIdle()
         job1.cancel()
@@ -73,7 +74,7 @@ class KzEventBusTest {
     @Test
     fun `subscriber added after events are emitted misses earlier events`() = runTest {
         val bus = KzEventBus()
-        bus.emit(KzEvent.NewRecord(uuidV7(), "STEAM_0:0:1", "kz_map", 1000L, 0))
+        bus.emit(KzEvent.NewRecord(uuidV7(), "STEAM_0:0:1", "kz_map", 1000L, 0, 0))
 
         // Subscribe AFTER the already-emitted event (no yield) — SharedFlow has no replay
         val received = mutableListOf<KzEvent>()
@@ -93,7 +94,7 @@ class KzEventBusTest {
 
         val timings = listOf(1000L, 2000L, 3000L)
         timings.forEach { t ->
-            bus.emit(KzEvent.NewRecord(uuidV7(), "STEAM_0:0:1", "kz_map", t, 0))
+            bus.emit(KzEvent.NewRecord(uuidV7(), "STEAM_0:0:1", "kz_map", t, 0, 0))
         }
         advanceUntilIdle()
         job.cancel()

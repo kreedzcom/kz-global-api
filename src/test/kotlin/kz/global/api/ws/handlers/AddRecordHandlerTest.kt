@@ -71,7 +71,7 @@ class AddRecordHandlerTest {
     fun `handle sends RECORD_ACK on accepted run`() = runTest {
         val (session, sent) = mockSession(serverId, pluginVersionId)
 
-        handler.handle(session, envelope(AddRecordPayload(steamid, "kz_canyon", 30_000L, 0, "uid-ok")))
+        handler.handle(session, envelope(AddRecordPayload(steamid, "kz_canyon", 30_000L, "uid-ok", 0, 0)))
 
         val frame = sent().single()
         assertEquals(MsgType.RECORD_ACK, frame.msgType)
@@ -82,7 +82,7 @@ class AddRecordHandlerTest {
     fun `handle echoes local_uid in RECORD_ACK`() = runTest {
         val (session, sent) = mockSession(serverId, pluginVersionId)
 
-        handler.handle(session, envelope(AddRecordPayload(steamid, "kz_canyon", 30_000L, 0, "uid-echo")))
+        handler.handle(session, envelope(AddRecordPayload(steamid, "kz_canyon", 30_000L, "uid-echo", 0, 0)))
 
         assertEquals("uid-echo", sent().single().data.jsonObject["local_uid"]!!.jsonPrimitive.content)
     }
@@ -91,7 +91,7 @@ class AddRecordHandlerTest {
     fun `handle echoes msgId in RECORD_ACK`() = runTest {
         val (session, sent) = mockSession(serverId, pluginVersionId)
 
-        handler.handle(session, envelope(AddRecordPayload(steamid, "kz_canyon", 30_000L, 0, "uid-id"), msgId = 77L))
+        handler.handle(session, envelope(AddRecordPayload(steamid, "kz_canyon", 30_000L, "uid-id", 0, 0), msgId = 77L))
 
         assertEquals(77L, sent().single().msgId)
     }
@@ -99,10 +99,10 @@ class AddRecordHandlerTest {
     @Test
     fun `handle sends RECORD_ACK with is_pb false on duplicate submission`() = runTest {
         val (session, _) = mockSession(serverId, pluginVersionId)
-        handler.handle(session, envelope(AddRecordPayload(steamid, "kz_canyon", 30_000L, 0, "uid-dup")))
+        handler.handle(session, envelope(AddRecordPayload(steamid, "kz_canyon", 30_000L, "uid-dup", 0, 0)))
 
         val (session2, sent2) = mockSession(serverId, pluginVersionId)
-        handler.handle(session2, envelope(AddRecordPayload(steamid, "kz_canyon", 30_000L, 0, "uid-dup")))
+        handler.handle(session2, envelope(AddRecordPayload(steamid, "kz_canyon", 30_000L, "uid-dup", 0, 0)))
 
         val frame = sent2().single()
         assertEquals(MsgType.RECORD_ACK, frame.msgType)
@@ -122,16 +122,76 @@ class AddRecordHandlerTest {
         }
         val (session, sent) = mockSession(serverId, pluginVersionId)
 
-        handler.handle(session, envelope(AddRecordPayload(steamid, "kz_fast", 1_000L, 0, "uid-rejected")))
+        handler.handle(session, envelope(AddRecordPayload(steamid, "kz_fast", 1_000L, "uid-rejected", 0, 0)))
 
         assertEquals(MsgType.ERROR, sent().single().msgType)
     }
 
     @Test
-    fun `handle sends ERROR when HELLO was not completed`() = runTest {
+    fun `handle sends ERROR for negative gochecks`() = runTest {
+        val (session, sent) = mockSession(serverId, pluginVersionId)
+        val env = WsEnvelope(
+            msgType = MsgType.ADD_RECORD,
+            data = buildJsonObject {
+                put("steamid", steamid)
+                put("map_name", "kz_bad")
+                put("time_ms", 30_000)
+                put("local_uid", "uid-bad-gc")
+                put("checkpoints", 5)
+                put("gochecks", -1)
+            },
+        )
+
+        handler.handle(session, env)
+
+        assertEquals(MsgType.ERROR, sent().single().msgType)
+    }
+
+    @Test
+    fun `handle sends ERROR for checkpoints out of range`() = runTest {
+        val (session, sent) = mockSession(serverId, pluginVersionId)
+        val env = WsEnvelope(
+            msgType = MsgType.ADD_RECORD,
+            data = buildJsonObject {
+                put("steamid", steamid)
+                put("map_name", "kz_bad2")
+                put("time_ms", 30_000)
+                put("local_uid", "uid-bad-cp")
+                put("checkpoints", 70_000)
+                put("gochecks", 0)
+            },
+        )
+
+        handler.handle(session, env)
+
+        assertEquals(MsgType.ERROR, sent().single().msgType)
+    }
+
+    @Test
+    fun `handle sends ERROR when gochecks positive but checkpoints zero`() = runTest {
+        val (session, sent) = mockSession(serverId, pluginVersionId)
+        val env = WsEnvelope(
+            msgType = MsgType.ADD_RECORD,
+            data = buildJsonObject {
+                put("steamid", steamid)
+                put("map_name", "kz_bad3")
+                put("time_ms", 30_000)
+                put("local_uid", "uid-bad-pair")
+                put("checkpoints", 0)
+                put("gochecks", 2)
+            },
+        )
+
+        handler.handle(session, env)
+
+        assertEquals(MsgType.ERROR, sent().single().msgType)
+    }
+
+    @Test
+    fun `handle sends ERROR without HELLO`() = runTest {
         val (session, sent) = mockSession(serverId, pluginVersionId = 0)
 
-        handler.handle(session, envelope(AddRecordPayload(steamid, "kz_canyon", 30_000L, 0, "uid-no-hello")))
+        handler.handle(session, envelope(AddRecordPayload(steamid, "kz_canyon", 30_000L, "uid-no-hello", 0, 0)))
 
         assertEquals(MsgType.ERROR, sent().single().msgType)
     }

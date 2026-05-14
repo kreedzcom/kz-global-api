@@ -23,9 +23,9 @@ The API validates the plugin build on connect. Add two fields to the `hello` pay
 
 If the version/checksum is unknown or cutoff, the API closes the connection with a human-readable reason.
 
-## 2. Add `teleports` to `add_record`
+## 2. Add `gochecks` and `checkpoints` to `add_record`
 
-Required for the nub/pro leaderboard split:
+Every finished run must include **`gochecks`** (go-check count) and **`checkpoints`** (aggregate checkpoint touches; no per-segment split times). If **`gochecks > 0`**, **`checkpoints` must be greater than zero**.
 
 ```json
 {
@@ -35,13 +35,15 @@ Required for the nub/pro leaderboard split:
     "steamid": "STEAM_0:0:12345",
     "map_name": "kz_longjumps2",
     "time_ms": 12345,
-    "teleports": 3,
-    "local_uid": "abc123..."
+    "local_uid": "abc123...",
+    "checkpoints": 12,
+    "gochecks": 2
   }
 }
 ```
 
-`teleports == 0` → pro run; `teleports > 0` → nub run.
+- **`gochecks == 0`** — run is eligible for the **pro** leaderboard as well as **nub** ( **`checkpoints` may be zero** on linear maps with no intermediate checkpoints).
+- **`gochecks > 0`** — **nub** only; **`checkpoints` must be positive**.
 
 ## 3. Handle `get_replay` (new message type 9) — **not implemented in the API yet**
 

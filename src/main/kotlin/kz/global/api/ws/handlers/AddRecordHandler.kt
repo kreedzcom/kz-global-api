@@ -14,6 +14,19 @@ class AddRecordHandler(private val recordService: RecordService) {
     suspend fun handle(session: GameServerSession, envelope: WsEnvelope) {
         val payload = json.decodeFromJsonElement(AddRecordPayload.serializer(), envelope.data)
 
+        if (payload.checkpoints < 0 || payload.checkpoints > 65_535) {
+            session.sendError(envelope.msgId, "Invalid checkpoints")
+            return
+        }
+        if (payload.gochecks < 0 || payload.gochecks > 65_535) {
+            session.sendError(envelope.msgId, "Invalid gochecks")
+            return
+        }
+        if (payload.gochecks > 0 && payload.checkpoints <= 0) {
+            session.sendError(envelope.msgId, "checkpoints must be positive when gochecks is positive")
+            return
+        }
+
         val pluginVersionId = session.pluginVersionId
         if (pluginVersionId <= 0) {
             session.sendError(envelope.msgId, "HELLO must be sent first with a valid plugin_version / plugin_checksum")

@@ -80,7 +80,7 @@ class BroadcastServiceTest {
 
     @Test
     fun `getMapInfo returns correct nub world record data`() = runTest {
-        val recordId = insertRecord("kz_wrs", "STEAM_0:0:1", 30_000L, teleports = 2)
+        val recordId = insertRecord("kz_wrs", "STEAM_0:0:1", 30_000L, 10, 2)
         transaction {
             WorldRecordsTable.insert {
                 it[mapName] = "kz_wrs"
@@ -100,7 +100,7 @@ class BroadcastServiceTest {
 
     @Test
     fun `getMapInfo returns correct pro world record data`() = runTest {
-        val recordId = insertRecord("kz_pro", "STEAM_0:0:2", 25_000L, teleports = 0)
+        val recordId = insertRecord("kz_pro", "STEAM_0:0:2", 25_000L, 0, 0)
         transaction {
             WorldRecordsTable.insert {
                 it[mapName] = "kz_pro"
@@ -120,8 +120,8 @@ class BroadcastServiceTest {
 
     @Test
     fun `getMapInfo returns both nub and pro WR when both exist`() = runTest {
-        val nubId = insertRecord("kz_both", "STEAM_0:0:1", 35_000L, teleports = 3)
-        val proId = insertRecord("kz_both", "STEAM_0:0:2", 28_000L, teleports = 0, localUid = "uid-pro")
+        val nubId = insertRecord("kz_both", "STEAM_0:0:1", 35_000L, 10, 3)
+        val proId = insertRecord("kz_both", "STEAM_0:0:2", 28_000L, 0, 0, "uid-pro")
         transaction {
             WorldRecordsTable.insert {
                 it[mapName] = "kz_both"
@@ -153,7 +153,7 @@ class BroadcastServiceTest {
 
     @Test
     fun `NewWorldRecord event triggers MAP_INFO to sessions on that map`() {
-        val recordId = insertRecord("kz_bc", "STEAM_0:0:99", 20_000L, teleports = 0)
+        val recordId = insertRecord("kz_bc", "STEAM_0:0:99", 20_000L, 0, 0)
         transaction {
             WorldRecordsTable.insert {
                 it[mapName] = "kz_bc"
@@ -187,7 +187,7 @@ class BroadcastServiceTest {
 
     @Test
     fun `NewWorldRecord event does nothing when no sessions are on that map`() {
-        val recordId = insertRecord("kz_empty_map", "STEAM_0:0:99", 20_000L, teleports = 0)
+        val recordId = insertRecord("kz_empty_map", "STEAM_0:0:99", 20_000L, 0, 0)
         transaction {
             WorldRecordsTable.insert {
                 it[mapName] = "kz_empty_map"
@@ -217,7 +217,8 @@ class BroadcastServiceTest {
         map: String,
         steamid: String,
         timeMs: Long,
-        teleports: Int,
+        checkpoints: Int,
+        gochecks: Int,
         localUid: String = "uid-${map}-${steamid}",
     ): kotlin.uuid.Uuid {
         val id = uuidV7()
@@ -236,7 +237,8 @@ class BroadcastServiceTest {
                 it[playerSteamid] = sid
                 it[mapName] = map
                 it[MapRecordsTable.timeMs] = timeMs
-                it[MapRecordsTable.teleports] = teleports
+                it[MapRecordsTable.checkpoints] = checkpoints
+                it[MapRecordsTable.gochecks] = gochecks
                 it[MapRecordsTable.localUid] = localUid
                 it[MapRecordsTable.pluginVersionId] = pvId
             }
