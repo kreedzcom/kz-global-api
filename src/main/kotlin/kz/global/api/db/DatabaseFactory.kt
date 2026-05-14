@@ -25,6 +25,10 @@ class DatabaseFactory(private val config: DatabaseConfig) {
             maximumPoolSize = config.maximumPoolSize
             isAutoCommit = false
             transactionIsolation = "TRANSACTION_REPEATABLE_READ"
+            if (config.username != null) {
+                username = config.username
+                password = config.password ?: ""
+            }
             validate()
         }
         return HikariDataSource(hikariConfig)

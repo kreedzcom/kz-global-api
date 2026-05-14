@@ -54,13 +54,18 @@ fun Routing.gameServerWsRoute() {
                         val text = frame.readText()
                         runCatching {
                             val envelope = json.decodeFromString<WsEnvelope>(text)
-                            dispatch(
-                                envelope, session,
-                                helloHandler, mapChangeHandler,
-                                playerJoinHandler, playerLeaveHandler,
-                                mapInfoHandler, courseTopHandler,
-                                playerRecordsHandler, addRecordHandler,
-                            )
+                            // Branch first so only the relevant handler is resolved (lazy inject per msg_type).
+                            when (envelope.msgType) {
+                                MsgType.HELLO -> helloHandler.handle(session, envelope)
+                                MsgType.MAP_CHANGE -> mapChangeHandler.handle(session, envelope)
+                                MsgType.PLAYER_JOIN -> playerJoinHandler.handle(session, envelope)
+                                MsgType.PLAYER_LEAVE -> playerLeaveHandler.handle(session, envelope)
+                                MsgType.WANT_MAP_INFO -> mapInfoHandler.handle(session, envelope)
+                                MsgType.WANT_COURSE_TOP -> courseTopHandler.handle(session, envelope)
+                                MsgType.WANT_PLAYER_RECORDS -> playerRecordsHandler.handle(session, envelope)
+                                MsgType.ADD_RECORD -> addRecordHandler.handle(session, envelope)
+                                else -> session.sendError(envelope.msgId, "Unknown msg_type: ${envelope.msgType}")
+                            }
                         }.onFailure { e ->
                             log.warn("Server {}: failed to handle message: {}", serverId, e.message)
                             session.sendError(message = "Invalid message format")
@@ -79,30 +84,5 @@ fun Routing.gameServerWsRoute() {
         } finally {
             registry.unregister(serverId)
         }
-    }
-}
-
-private suspend fun dispatch(
-    envelope: WsEnvelope,
-    session: GameServerSession,
-    helloHandler: HelloHandler,
-    mapChangeHandler: MapChangeHandler,
-    playerJoinHandler: PlayerJoinHandler,
-    playerLeaveHandler: PlayerLeaveHandler,
-    mapInfoHandler: MapInfoHandler,
-    courseTopHandler: CourseTopHandler,
-    playerRecordsHandler: PlayerRecordsHandler,
-    addRecordHandler: AddRecordHandler,
-) {
-    when (envelope.msgType) {
-        MsgType.HELLO -> helloHandler.handle(session, envelope)
-        MsgType.MAP_CHANGE -> mapChangeHandler.handle(session, envelope)
-        MsgType.PLAYER_JOIN -> playerJoinHandler.handle(session, envelope)
-        MsgType.PLAYER_LEAVE -> playerLeaveHandler.handle(session, envelope)
-        MsgType.WANT_MAP_INFO -> mapInfoHandler.handle(session, envelope)
-        MsgType.WANT_COURSE_TOP -> courseTopHandler.handle(session, envelope)
-        MsgType.WANT_PLAYER_RECORDS -> playerRecordsHandler.handle(session, envelope)
-        MsgType.ADD_RECORD -> addRecordHandler.handle(session, envelope)
-        else -> session.sendError(envelope.msgId, "Unknown msg_type: ${envelope.msgType}")
     }
 }

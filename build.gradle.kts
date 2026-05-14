@@ -42,6 +42,8 @@ dependencies {
     implementation(libs.aws.s3)
 
     testImplementation(libs.ktor.server.test.host)
+    testImplementation(libs.ktor.client.cio)
+    testImplementation(libs.ktor.client.websockets)
     testImplementation(libs.h2)
     testImplementation(kotlin("test-junit5"))
     testImplementation(libs.mockk)

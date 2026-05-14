@@ -70,8 +70,10 @@ ktor-server-metrics-micrometer = { module = "io.ktor:ktor-server-metrics-microme
 micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus", version.ref = "micrometer-prometheus" }
 
 # Testing
-mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
+ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.ref = "ktor" }
 h2 = { module = "com.h2database:h2", version = "2.3.232" }
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 
 [bundles]
 ktor-server = [

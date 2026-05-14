@@ -5,6 +5,9 @@ import io.ktor.server.application.*
 data class DatabaseConfig(
     val url: String,
     val maximumPoolSize: Int = 10,
+    /** When set (e.g. H2 in tests), passed to Hikari. Postgres URLs often embed credentials in [url] instead. */
+    val username: String? = null,
+    val password: String? = null,
 )
 
 data class R2Config(
@@ -29,6 +32,8 @@ fun Application.loadAppConfig(): AppConfig = AppConfig(
         url = environment.config.property("database.url").getString(),
         maximumPoolSize = environment.config.propertyOrNull("database.maximumPoolSize")
             ?.getString()?.toInt() ?: 10,
+        username = environment.config.propertyOrNull("database.username")?.getString(),
+        password = environment.config.propertyOrNull("database.password")?.getString(),
     ),
     r2 = R2Config(
         endpoint = environment.config.property("r2.endpoint").getString(),
