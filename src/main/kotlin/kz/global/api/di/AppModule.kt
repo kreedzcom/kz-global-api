@@ -1,5 +1,6 @@
 package kz.global.api.di
 
+import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
 import kz.global.api.config.AppConfig
 import kz.global.api.db.DatabaseFactory
@@ -20,6 +21,7 @@ import org.koin.dsl.module
 fun appModule(config: AppConfig, prometheusRegistry: PrometheusMeterRegistry) = module {
     single { config }
     single { prometheusRegistry }
+    single<MeterRegistry> { get<PrometheusMeterRegistry>() }
     single { DatabaseFactory(config.database) }
     single { R2Client(config.r2) }
     single { KzEventBus() }
