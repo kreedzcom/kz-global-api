@@ -209,7 +209,7 @@ Only non-flagged records are returned.
 ```
 
 - `local_uid` is a server-generated string used for idempotency. Submitting the same `local_uid` twice returns the same `RECORD_ACK` both times.
-- `gochecks` — required non-negative integer: go-check count. **`gochecks == 0`** → the run is counted for both **nub** and **pro** leaderboards; **`gochecks > 0`** → **nub** only.
+- `gochecks` — required non-negative integer: go-check count. **`gochecks == 0`** → **pro** only; **`gochecks > 0`** → **nub** only.
 - `checkpoints` — required non-negative integer: how many checkpoints were touched in the run (aggregate count only; no per-segment times). If **`gochecks > 0`**, **`checkpoints` must be greater than zero** (a positive go-check count without any checkpoint is rejected as invalid).
 
 `RECORD_ACK` (105) response:

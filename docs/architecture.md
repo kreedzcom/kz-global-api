@@ -193,8 +193,7 @@ Events are emitted **after** the database transaction commits to keep them consi
 1. **Idempotency check** — if `local_uid` already exists, return `RecordResult.Duplicate` with the existing record id.
 2. **Anti-cheat** — if `map_minimum_time` exists for the map and the submitted time is below it, return `RecordResult.Rejected`.
 3. **Insert** — create `map_record` row with a UUIDv7 id.
-4. **Leaderboard update (nub)** — upsert `best_nub_record` if this is faster than the player's current best.
-5. **Leaderboard update (pro)** — if **`gochecks == 0`**: upsert `best_pro_record`; check and replace `world_record` if faster.
+4. **Leaderboard update** — if **`gochecks == 0`**: upsert `best_pro_record` and possibly `world_record` (`pro`); otherwise upsert `best_nub_record` and possibly `world_record` (`nub`). A run never updates both categories.
 6. After the transaction: emit `KzEvent.NewRecord` and optionally `KzEvent.NewWorldRecord`; write audit log.
 
 ---

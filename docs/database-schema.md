@@ -131,7 +131,7 @@ A single completed run.
 | `map_name` | `VARCHAR(255)` NOT NULL → `map(name)` | |
 | `time_ms` | `BIGINT` NOT NULL | Run time in milliseconds |
 | `checkpoints` | `INTEGER` NOT NULL | Aggregate count of checkpoints touched in the run (not split times). Must be **`> 0`** whenever **`gochecks > 0`** (enforced on ingest). |
-| `gochecks` | `INTEGER` NOT NULL | Go-check count; **`gochecks == 0`** → eligible for **pro** as well as **nub**; **`> 0`** → **nub** only |
+| `gochecks` | `INTEGER` NOT NULL | Go-check count; **`gochecks == 0`** → **pro** only; **`> 0`** → **nub** only |
 | `local_uid` | `VARCHAR(64)` UNIQUE NOT NULL | Server-generated idempotency key |
 | `replay_r2_key` | `VARCHAR(255)` | R2 object key once replay is uploaded (`replays/{uuid}.krpz`) |
 | `flagged` | `BOOLEAN` NOT NULL DEFAULT `false` | Anti-cheat review flag |
@@ -145,7 +145,7 @@ Indexes: `(player_steamid, map_name)`, `map_name`, `time_ms`, `flagged`.
 
 ### `best_nub_record` (V2)
 
-Denormalised per-player best time in the **nub** category (every submitted run).
+Denormalised per-player best time in the **nub** category (runs with **`gochecks > 0`**).
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -202,4 +202,4 @@ Tracks in-flight multi-chunk replay uploads (schema only — current state is he
 
 **Nullable map metadata** — all columns in `map` except `name` are nullable so maps can be created lazily on first record submission without requiring any prior admin setup.
 
-**`gochecks` and `checkpoints` on `map_record`** — both are required on every run. **`gochecks == 0`** means the run counts for the **pro** leaderboard as well as **nub**. **`checkpoints`** is the aggregate checkpoint touch count; if **`gochecks > 0`**, the API rejects **`checkpoints == 0`** as an impossible combination.
+**`gochecks` and `checkpoints` on `map_record`** — both are required on every run. **`gochecks == 0`** → **pro** leaderboard only; **`gochecks > 0`** → **nub** only. **`checkpoints`** is the aggregate checkpoint touch count; if **`gochecks > 0`**, the API rejects **`checkpoints == 0`** as an impossible combination.

@@ -104,15 +104,15 @@ class RecordService(
                     it[MapRecordsTable.pluginVersionId] = pluginVersionId
                 }
 
-                val isPbNub = updateBestNub(payload.steamid, payload.mapName, recordId, payload.timeMs)
-                val isPbPro = if (payload.gochecks == 0) {
-                    updateBestPro(payload.steamid, payload.mapName, recordId, payload.timeMs)
+                val (isPb, isWrNub, isWrPro) = if (payload.gochecks == 0) {
+                    val isPbPro = updateBestPro(payload.steamid, payload.mapName, recordId, payload.timeMs)
+                    val isWrPro = isPbPro && updateWorldRecord(payload.mapName, "pro", recordId, payload.timeMs)
+                    Triple(isPbPro, false, isWrPro)
                 } else {
-                    false
+                    val isPbNub = updateBestNub(payload.steamid, payload.mapName, recordId, payload.timeMs)
+                    val isWrNub = isPbNub && updateWorldRecord(payload.mapName, "nub", recordId, payload.timeMs)
+                    Triple(isPbNub, isWrNub, false)
                 }
-
-                val isWrNub = isPbNub && updateWorldRecord(payload.mapName, "nub", recordId, payload.timeMs)
-                val isWrPro = isPbPro && updateWorldRecord(payload.mapName, "pro", recordId, payload.timeMs)
 
                 log.info(
                     "Accepted: {} record={} map={} time={}ms checkpoints={} gochecks={}",
@@ -125,7 +125,7 @@ class RecordService(
                 )
                 metrics.recordsSubmitted.increment()
                 if (isWrNub || isWrPro) metrics.worldRecords.increment()
-                LeaderboardResult(recordId, isPbNub || isPbPro, isWrNub, isWrPro)
+                LeaderboardResult(recordId, isPb, isWrNub, isWrPro)
             }
         } catch (e: Exception) {
             if (!isUniqueConstraintViolation(e)) throw e

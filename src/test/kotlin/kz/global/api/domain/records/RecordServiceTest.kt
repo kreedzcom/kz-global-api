@@ -124,6 +124,19 @@ class RecordServiceTest {
                     .where { (WorldRecordsTable.mapName eq "kz_gc_pro") and (WorldRecordsTable.category eq "pro") }
                     .singleOrNull(),
             )
+            assertNull(
+                WorldRecordsTable.selectAll()
+                    .where { (WorldRecordsTable.mapName eq "kz_gc_pro") and (WorldRecordsTable.category eq "nub") }
+                    .singleOrNull(),
+            )
+            assertNull(
+                BestNubRecordsTable.selectAll()
+                    .where {
+                        (BestNubRecordsTable.playerSteamid eq steamid) and
+                            (BestNubRecordsTable.mapName eq "kz_gc_pro")
+                    }
+                    .singleOrNull(),
+            )
             val row = MapRecordsTable.selectAll()
                 .where { MapRecordsTable.localUid eq "uid-gc-pro" }
                 .single()
@@ -214,18 +227,22 @@ class RecordServiceTest {
     // ─── Leaderboard logic ───────────────────────────────────────────────────
 
     @Test
-    fun `pro run sets both nub and pro world records`() = runTest {
+    fun `pro run sets only pro world record`() = runTest {
         val payload = AddRecordPayload(steamid, "kz_wr", 20_000L, "uid-wr", 0, 0)
 
         service.submit(serverId, pluginVersionId, payload)
 
         transaction {
-            assertNotNull(WorldRecordsTable.selectAll()
-                .where { (WorldRecordsTable.mapName eq "kz_wr") and (WorldRecordsTable.category eq "nub") }
-                .singleOrNull())
-            assertNotNull(WorldRecordsTable.selectAll()
-                .where { (WorldRecordsTable.mapName eq "kz_wr") and (WorldRecordsTable.category eq "pro") }
-                .singleOrNull())
+            assertNull(
+                WorldRecordsTable.selectAll()
+                    .where { (WorldRecordsTable.mapName eq "kz_wr") and (WorldRecordsTable.category eq "nub") }
+                    .singleOrNull(),
+            )
+            assertNotNull(
+                WorldRecordsTable.selectAll()
+                    .where { (WorldRecordsTable.mapName eq "kz_wr") and (WorldRecordsTable.category eq "pro") }
+                    .singleOrNull(),
+            )
         }
     }
 

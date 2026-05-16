@@ -42,7 +42,7 @@ Every finished run must include **`gochecks`** (go-check count) and **`checkpoin
 }
 ```
 
-- **`gochecks == 0`** — run is eligible for the **pro** leaderboard as well as **nub** ( **`checkpoints` may be zero** on linear maps with no intermediate checkpoints).
+- **`gochecks == 0`** — **pro** only ( **`checkpoints` may be zero** on linear maps with no intermediate checkpoints).
 - **`gochecks > 0`** — **nub** only; **`checkpoints` must be positive**.
 
 ## 3. Handle `get_replay` (new message type 9) — **not implemented in the API yet**

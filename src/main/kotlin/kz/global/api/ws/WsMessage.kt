@@ -91,7 +91,7 @@ data class AddRecordPayload(
     @SerialName("local_uid") val localUid: String,
     /** Checkpoint count (aggregate touches; not split times). Required; if [gochecks] is positive, this must be positive too. */
     val checkpoints: Int,
-    /** Go-check count; `0` = eligible for pro leaderboard as well as nub. */
+    /** Go-check count; `0` = pro run only; `> 0` = nub run only. */
     val gochecks: Int,
 )
 
