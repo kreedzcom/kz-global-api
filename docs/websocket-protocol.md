@@ -108,11 +108,51 @@ Response:
   "wr_nub_steamid":  "STEAM_0:0:12345",
   "wr_nub_time_ms":  35420,
   "wr_pro_steamid":  "STEAM_0:0:67890",
-  "wr_pro_time_ms":  28100
+  "wr_pro_time_ms":  28100,
+  "type": 1,
+  "length": 2,
+  "difficulty": 4
 }
 ```
 
-Fields are `null` when no world record exists for that category.
+WR fields are `null` when no world record exists for that category. Map metadata fields are omitted or `null` when not set on the `map` row.
+
+**`type`** (integer, cs16kz `KZM_*` map type):
+
+| Value | Meaning |
+|-------|---------|
+| `0` | Bhop |
+| `1` | Climb |
+| `2` | Slide |
+| `3` | Mix |
+| `4` | Special |
+
+**`length`** (integer, length tier — stored as `length_tier` in the database):
+
+| Value | Meaning |
+|-------|---------|
+| `0` | Very short |
+| `1` | Short |
+| `2` | Middle |
+| `3` | Long |
+| `4` | Very long |
+
+**`difficulty`** (integer, cs16kz difficulty tier):
+
+| Value | Meaning |
+|-------|---------|
+| `0` | Beginner |
+| `1` | Easy |
+| `2` | Easy–medium |
+| `3` | Medium |
+| `4` | Medium–hard |
+| `5` | Hard |
+| `6` | Hard–extreme |
+| `7` | Extreme |
+| `8` | Extreme–death |
+| `9` | Death |
+
+In the database, `type` may be stored as a name (`bhop`, `climb`, …) or numeric string; the API always sends the integer enum on the wire.
 
 ---
 

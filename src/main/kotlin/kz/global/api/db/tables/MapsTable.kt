@@ -8,6 +8,7 @@ object MapsTable : Table("map") {
     val checksum = varchar("checksum", 64).nullable()
     val type = varchar("type", 32).nullable()
     val length = float("length").nullable()
+    val lengthTier = integer("length_tier").nullable()
     val difficulty = integer("difficulty").nullable()
 
     override val primaryKey = PrimaryKey(name)

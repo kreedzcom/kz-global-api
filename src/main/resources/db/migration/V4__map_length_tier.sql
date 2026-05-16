@@ -1,0 +1,1 @@
+ALTER TABLE map ADD COLUMN length_tier INTEGER;

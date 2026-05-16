@@ -67,7 +67,12 @@ class MapInfoHandlerTest {
         val srvId = serverId
         val pvId = pluginVersionId
         transaction {
-            MapsTable.insertIgnore { it[name] = "kz_canyon" }
+            MapsTable.insertIgnore {
+                it[name] = "kz_canyon"
+                it[type] = "climb"
+                it[lengthTier] = 2
+                it[difficulty] = 4
+            }
             PlayersTable.upsert(PlayersTable.steamid) {
                 it[steamid] = "STEAM_0:0:1"
                 it[lastNickname] = "WrHolder"
@@ -98,6 +103,10 @@ class MapInfoHandlerTest {
         assertEquals(1, frames.size)
         assertEquals(MsgType.MAP_INFO, frames.single().msgType)
         assertEquals(7L, frames.single().msgId)
+        val data = frames.single().data.jsonObject
+        assertEquals("1", data["type"]!!.jsonPrimitive.content)
+        assertEquals("2", data["length"]!!.jsonPrimitive.content)
+        assertEquals("4", data["difficulty"]!!.jsonPrimitive.content)
     }
 
     @Test

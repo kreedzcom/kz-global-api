@@ -1,6 +1,7 @@
 package kz.global.api.domain.broadcast
 
 import kz.global.api.db.tables.*
+import kz.global.api.domain.maps.MapMetadata
 import kz.global.api.events.KzEventBus
 import kz.global.api.ws.ConnectedServersRegistry
 import kz.global.api.ws.MapInfoPayload
@@ -47,8 +48,8 @@ class BroadcastService(
     }
 
     suspend fun getMapInfo(mapName: String): MapInfoPayload? = suspendTransaction() {
-        val mapExists = MapsTable.selectAll().where { MapsTable.name eq mapName }.count() > 0
-        if (!mapExists) return@suspendTransaction null
+        val mapRow = MapsTable.selectAll().where { MapsTable.name eq mapName }.singleOrNull()
+            ?: return@suspendTransaction null
 
         val nubWr = fetchWr(mapName, "nub")
         val proWr = fetchWr(mapName, "pro")
@@ -59,6 +60,9 @@ class BroadcastService(
             wrNubTimeMs = nubWr?.second,
             wrProSteamid = proWr?.first,
             wrProTimeMs = proWr?.second,
+            type = MapMetadata.parseMapType(mapRow[MapsTable.type]),
+            length = MapMetadata.validateLengthTier(mapRow[MapsTable.lengthTier]),
+            difficulty = MapMetadata.validateDifficulty(mapRow[MapsTable.difficulty]),
         )
     }
 

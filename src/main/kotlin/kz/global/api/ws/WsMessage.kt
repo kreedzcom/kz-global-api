@@ -110,6 +110,9 @@ data class MapInfoPayload(
     @SerialName("wr_nub_time_ms") val wrNubTimeMs: Long? = null,
     @SerialName("wr_pro_steamid") val wrProSteamid: String? = null,
     @SerialName("wr_pro_time_ms") val wrProTimeMs: Long? = null,
+    val type: Int? = null,
+    val length: Int? = null,
+    val difficulty: Int? = null,
 )
 
 @Serializable

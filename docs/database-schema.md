@@ -74,7 +74,7 @@ A Steam player seen on at least one server.
 
 ---
 
-### `map` (V1)
+### `map` (V1, `length_tier` V4)
 
 A map seen by the system.
 
@@ -82,11 +82,12 @@ A map seen by the system.
 |--------|------|-------|
 | `name` | `VARCHAR(255)` PK | e.g. `kz_canyon` |
 | `checksum` | `VARCHAR(64)` | Optional map file checksum |
-| `type` | `VARCHAR(32)` | e.g. `kz`, `bhop` |
-| `length` | `REAL` | Estimated length in units |
-| `difficulty` | `INTEGER` | Difficulty tier |
+| `type` | `VARCHAR(32)` | Map type name (`bhop`, `climb`, `slide`, `mix`, `special`) or numeric string `0`–`4`; exposed on the wire as integer enum in `MAP_INFO` |
+| `length` | `REAL` | Reserved; not used in `MAP_INFO` today |
+| `length_tier` | `INTEGER` | Length tier enum `0`–`4` (very short … very long); sent as JSON field `length` in `MAP_INFO` |
+| `difficulty` | `INTEGER` | Difficulty tier enum `0`–`9` (beginner … death); sent as `difficulty` in `MAP_INFO` |
 
-All columns except `name` are nullable for forward compatibility. Maps are created lazily via `INSERT IGNORE` when a record is submitted.
+All columns except `name` are nullable for forward compatibility. Maps are created lazily via `INSERT IGNORE` when a record is submitted (name only until metadata is seeded).
 
 ---
 

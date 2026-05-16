@@ -78,6 +78,29 @@ class BroadcastServiceTest {
         assertNull(result.wrNubTimeMs)
         assertNull(result.wrProSteamid)
         assertNull(result.wrProTimeMs)
+        assertNull(result.type)
+        assertNull(result.length)
+        assertNull(result.difficulty)
+    }
+
+    @Test
+    fun `getMapInfo includes map metadata when set on map row`() = runTest {
+        transaction {
+            MapsTable.insertIgnore {
+                it[name] = "bkz_goldbhop"
+                it[type] = "bhop"
+                it[lengthTier] = 0
+                it[difficulty] = 0
+            }
+        }
+        val service = service()
+
+        val result = service.getMapInfo("bkz_goldbhop")
+
+        assertNotNull(result)
+        assertEquals(0, result.type)
+        assertEquals(0, result.length)
+        assertEquals(0, result.difficulty)
     }
 
     @Test
