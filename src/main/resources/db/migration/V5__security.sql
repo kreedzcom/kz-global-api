@@ -1,0 +1,10 @@
+ALTER TABLE player
+    ADD COLUMN IF NOT EXISTS is_banned BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE game_server
+    ADD COLUMN IF NOT EXISTS allowed_ips VARCHAR(1024);
+
+ALTER TABLE map_record
+    ADD COLUMN IF NOT EXISTS leaderboard_pending BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_player_is_banned ON player(is_banned);
