@@ -66,7 +66,12 @@ class ApplicationIntegrationTest {
             module()
         }
 
-        val response = client.get("/metrics")
+        val unauthorized = client.get("/metrics")
+        assertEquals(HttpStatusCode.Unauthorized, unauthorized.status)
+
+        val response = client.get("/metrics") {
+            header(HttpHeaders.Authorization, "Bearer test-metrics-key")
+        }
 
         assertEquals(HttpStatusCode.OK, response.status)
         val body = response.bodyAsText()
