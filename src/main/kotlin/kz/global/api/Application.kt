@@ -22,6 +22,7 @@ import kz.global.api.config.loadAppConfig
 import kz.global.api.db.DatabaseFactory
 import kz.global.api.di.appModule
 import kz.global.api.di.handlersModule
+import kz.global.api.security.constantTimeEquals
 import kz.global.api.ws.ConnectedServersRegistry
 import kz.global.api.ws.gameServerWsRoute
 import org.koin.core.qualifier.named
@@ -55,6 +56,7 @@ fun Application.module() {
     install(WebSockets) {
         pingPeriod = 30.seconds
         timeout = 60.seconds
+        maxFrameSize = config.security.maxWsFrameBytes
     }
 
     install(ContentNegotiation) {
@@ -85,6 +87,16 @@ fun Application.module() {
             call.respond(HttpStatusCode.OK)
         }
         get("/metrics") {
+            val metricsKey = config.security.metricsBearerKey
+            if (metricsKey != null) {
+                val token = call.request.headers["Authorization"]
+                    ?.removePrefix("Bearer ")
+                    ?.trim()
+                if (!constantTimeEquals(token, metricsKey)) {
+                    call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "Unauthorized"))
+                    return@get
+                }
+            }
             call.respond(prometheusRegistry.scrape())
         }
         gameServerWsRoute()
@@ -92,6 +104,7 @@ fun Application.module() {
         pluginVersionsRoute()
         recordsRoute()
         mapTimesRoute()
+        playersRoute()
     }
 
 }

@@ -1,5 +1,6 @@
 package kz.global.api.domain.replays
 
+import kz.global.api.config.SecurityConfig
 import kz.global.api.db.tables.MapRecordsTable
 import kz.global.api.db.tables.WorldRecordsTable
 import kz.global.api.metrics.KzMetrics
@@ -15,7 +16,8 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 import org.jetbrains.exposed.v1.jdbc.update
 import org.slf4j.LoggerFactory
-import java.util.zip.CRC32
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.time.Duration.Companion.minutes
 import kotlin.uuid.Uuid
 import kotlin.time.Duration.Companion.days
 
@@ -56,25 +58,31 @@ data class ReplayChunk(
     }
 }
 
-private class UploadState(val chunks: Array<ByteArray?>) {
+private class UploadState(
+    val chunks: Array<ByteArray?>,
+    val serverId: Int,
+    val startedAt: kotlin.time.Instant = Clock.System.now(),
+) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is UploadState) return false
-        return chunks.contentEquals(other.chunks)
+        return chunks.contentEquals(other.chunks) && serverId == other.serverId
     }
 
-    override fun hashCode(): Int = chunks.contentDeepHashCode()
+    override fun hashCode(): Int = chunks.contentDeepHashCode() * 31 + serverId
 }
 
 class ReplayService(
     private val r2Client: R2Client,
     private val metrics: KzMetrics,
+    private val security: SecurityConfig,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
 
     private val log = LoggerFactory.getLogger(ReplayService::class.java)
-    private val uploads = java.util.concurrent.ConcurrentHashMap<String, UploadState>()
+    private val uploads = ConcurrentHashMap<String, UploadState>()
     private val ZSTD_MAGIC = byteArrayOf(0x28.toByte(), 0xB5.toByte(), 0x2F.toByte(), 0xFD.toByte())
+    private val uploadTtl = security.replayUploadTtlMinutes.minutes
 
     fun parseChunk(bytes: ByteArray): ReplayChunk? {
         if (bytes.size < HEADER_SIZE) return null
@@ -92,19 +100,39 @@ class ReplayService(
         return ReplayChunk(localUid, checksum, index, total, data)
     }
 
-    fun receive(chunk: ReplayChunk): ReplayAssemblyResult {
+    fun evictStaleUploads() {
+        val cutoff = Clock.System.now() - uploadTtl
+        uploads.entries.removeIf { (_, state) -> state.startedAt < cutoff }
+    }
+
+    private fun countActiveUploadsForServer(serverId: Int): Int =
+        uploads.values.count { it.serverId == serverId }
+
+    fun receive(chunk: ReplayChunk, serverId: Int): ReplayAssemblyResult {
+        evictStaleUploads()
+
         if (chunk.total !in 1..MAX_REPLAY_CHUNKS || chunk.index < 0 || chunk.index >= chunk.total) {
             uploads.remove(chunk.localUid)
             return ReplayAssemblyResult.Rejected.InvalidChunk
         }
 
-        val state = uploads.getOrPut(chunk.localUid) { UploadState(arrayOfNulls(chunk.total)) }
+        val existing = uploads[chunk.localUid]
+        if (existing == null) {
+            if (countActiveUploadsForServer(serverId) >= security.maxConcurrentReplayUploadsPerServer) {
+                return ReplayAssemblyResult.Rejected.TooManyConcurrent
+            }
+        } else if (existing.serverId != serverId) {
+            uploads.remove(chunk.localUid)
+            return ReplayAssemblyResult.Rejected.InvalidChunk
+        }
+
+        val state = uploads.getOrPut(chunk.localUid) { UploadState(arrayOfNulls(chunk.total), serverId) }
         if (state.chunks.size != chunk.total) {
             uploads.remove(chunk.localUid)
             return ReplayAssemblyResult.Rejected.InvalidChunk
         }
 
-        val crc = CRC32()
+        val crc = java.util.zip.CRC32()
         crc.update(chunk.data)
         if (crc.value != chunk.checksum) {
             log.warn("CRC32 mismatch for chunk {}/{} uid={}", chunk.index, chunk.total, chunk.localUid)
@@ -120,8 +148,13 @@ class ReplayService(
 
         uploads.remove(chunk.localUid)
 
-        val totalBytes = state.chunks.sumOf { it!!.size }
-        val assembled = ByteArray(totalBytes)
+        val totalBytes = state.chunks.sumOf { it!!.size.toLong() }
+        if (totalBytes > security.maxReplayBytes) {
+            log.warn("Replay uid={} exceeds max size ({} bytes)", chunk.localUid, totalBytes)
+            return ReplayAssemblyResult.Rejected.TooLarge
+        }
+
+        val assembled = ByteArray(totalBytes.toInt())
         var pos = 0
         for (part in state.chunks) {
             val b = part!!
@@ -158,7 +191,7 @@ class ReplayService(
                     .selectAll()
                     .where {
                         (WorldRecordsTable.mapName eq mapName) and
-                        (WorldRecordsTable.category eq "nub")
+                            (WorldRecordsTable.category eq "nub")
                     }
                     .singleOrNull()
                     ?.get(MapRecordsTable.replayR2Key)

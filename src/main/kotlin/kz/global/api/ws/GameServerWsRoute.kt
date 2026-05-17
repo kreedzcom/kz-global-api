@@ -5,6 +5,8 @@ import io.ktor.server.websocket.*
 import io.ktor.websocket.*
 import kz.global.api.auth.resolveGameServerToken
 import kz.global.api.metrics.KzMetrics
+import kz.global.api.security.WsRateLimiters
+import kz.global.api.util.clientIp
 import kz.global.api.ws.handlers.*
 import kotlinx.coroutines.channels.consumeEach
 import kotlinx.serialization.json.Json
@@ -17,6 +19,7 @@ private val json = Json { ignoreUnknownKeys = true }
 fun Routing.gameServerWsRoute() {
     val registry by inject<ConnectedServersRegistry>()
     val metrics by inject<KzMetrics>()
+    val rateLimiters by inject<WsRateLimiters>()
     val helloHandler by inject<HelloHandler>()
     val mapChangeHandler by inject<MapChangeHandler>()
     val playerJoinHandler by inject<PlayerJoinHandler>()
@@ -28,6 +31,14 @@ fun Routing.gameServerWsRoute() {
     val replayChunkHandler by inject<ReplayChunkHandler>()
 
     webSocket("/ws/game") {
+        val clientIp = call.clientIp()
+
+        if (!rateLimiters.wsUpgradeByIp.tryAcquire(clientIp)) {
+            metrics.authFailures.increment()
+            close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Rate limit exceeded"))
+            return@webSocket
+        }
+
         val token = call.request.headers["Authorization"]
             ?.removePrefix("Bearer ")?.trim()
 
@@ -37,7 +48,7 @@ fun Routing.gameServerWsRoute() {
             return@webSocket
         }
 
-        val serverId = resolveGameServerToken(token)
+        val serverId = resolveGameServerToken(token, clientIp)
         if (serverId == null) {
             metrics.authFailures.increment()
             close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Invalid or inactive token"))
@@ -54,7 +65,6 @@ fun Routing.gameServerWsRoute() {
                         val text = frame.readText()
                         runCatching {
                             val envelope = json.decodeFromString<WsEnvelope>(text)
-                            // Branch first so only the relevant handler is resolved (lazy inject per msg_type).
                             when (envelope.msgType) {
                                 MsgType.HELLO -> helloHandler.handle(session, envelope)
                                 MsgType.MAP_CHANGE -> mapChangeHandler.handle(session, envelope)

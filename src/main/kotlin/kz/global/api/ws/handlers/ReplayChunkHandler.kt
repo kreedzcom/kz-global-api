@@ -1,9 +1,11 @@
 package kz.global.api.ws.handlers
 
 import kz.global.api.db.tables.MapRecordsTable
+import kz.global.api.domain.records.RecordService
 import kz.global.api.domain.replays.ReplayAssemblyResult
 import kz.global.api.domain.replays.ReplayService
 import kz.global.api.metrics.KzMetrics
+import kz.global.api.security.WsRateLimiters
 import kz.global.api.ws.FileAckPayload
 import kz.global.api.ws.GameServerSession
 import kz.global.api.ws.MsgType
@@ -19,13 +21,20 @@ import org.slf4j.LoggerFactory
 
 class ReplayChunkHandler(
     private val replayService: ReplayService,
+    private val recordService: RecordService,
     private val metrics: KzMetrics,
+    private val rateLimiters: WsRateLimiters,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
 
     private val log = LoggerFactory.getLogger(ReplayChunkHandler::class.java)
 
     suspend fun handle(session: GameServerSession, bytes: ByteArray) {
+        if (!rateLimiters.replayBytesByServer.tryAcquire(session.serverId.toString(), bytes.size)) {
+            log.warn("Server {}: replay byte rate limit exceeded", session.serverId)
+            return
+        }
+
         val chunk = replayService.parseChunk(bytes)
         if (chunk == null) {
             log.warn("Server {}: malformed replay chunk ({} bytes)", session.serverId, bytes.size)
@@ -34,14 +43,17 @@ class ReplayChunkHandler(
 
         log.debug("Server {}: chunk {}/{} for uid={}", session.serverId, chunk.index + 1, chunk.total, chunk.localUid)
 
-        when (val assembly = replayService.receive(chunk)) {
+        when (val assembly = replayService.receive(chunk, session.serverId)) {
             is ReplayAssemblyResult.Pending -> return
             is ReplayAssemblyResult.Rejected -> {
                 when (assembly) {
                     is ReplayAssemblyResult.Rejected.CrcMismatch,
                     is ReplayAssemblyResult.Rejected.BadZstdMagic,
                     -> metrics.replayUploadFailures.increment()
-                    is ReplayAssemblyResult.Rejected.InvalidChunk -> Unit
+                    is ReplayAssemblyResult.Rejected.InvalidChunk,
+                    is ReplayAssemblyResult.Rejected.TooLarge,
+                    is ReplayAssemblyResult.Rejected.TooManyConcurrent,
+                    -> Unit
                 }
                 session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = false))
                 return
@@ -75,6 +87,7 @@ class ReplayChunkHandler(
                 session.socket.launch {
                     runCatching { replayService.storeReplay(recordId, chunk.localUid, assembled) }
                         .onSuccess {
+                            recordService.finalizePendingLeaderboard(chunk.localUid)
                             session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = true))
                             log.info("Server {}: replay stored for record {}", session.serverId, recordId)
                         }

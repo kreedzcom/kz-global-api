@@ -7,7 +7,11 @@ import kz.global.api.domain.records.RecordService
 import kz.global.api.events.AuditLogger
 import kz.global.api.events.KzEventBus
 import kz.global.api.metrics.KzMetrics
+import kz.global.api.domain.players.PlayerBanService
 import kz.global.api.support.TestDatabase
+import kz.global.api.support.testSecurityConfig
+import kz.global.api.support.testWsRateLimiters
+import kz.global.api.support.testWsRateLimitersStrict
 import kz.global.api.support.mockSession
 import kz.global.api.ws.*
 import kotlinx.coroutines.test.runTest
@@ -28,8 +32,10 @@ class AddRecordHandlerTest {
         eventBus = KzEventBus(),
         auditLogger = mockk(relaxed = true),
         metrics = KzMetrics(SimpleMeterRegistry(), ConnectedServersRegistry()),
+        playerBanService = PlayerBanService(),
+        security = testSecurityConfig(),
     )
-    private val handler = AddRecordHandler(recordService)
+    private val handler = AddRecordHandler(recordService, testWsRateLimiters())
 
     private var serverId = 0
     private var pluginVersionId = 0
@@ -185,6 +191,20 @@ class AddRecordHandlerTest {
         handler.handle(session, env)
 
         assertEquals(MsgType.ERROR, sent().single().msgType)
+    }
+
+    @Test
+    fun `handle sends ERROR when add record rate limit exceeded`() = runTest {
+        val strictHandler = AddRecordHandler(recordService, testWsRateLimitersStrict())
+        val (session, sent) = mockSession(serverId, pluginVersionId)
+        val payload = AddRecordPayload(steamid, "kz_canyon", 30_000L, "uid-rl-1", 0, 0)
+
+        strictHandler.handle(session, envelope(payload))
+        strictHandler.handle(session, envelope(payload.copy(localUid = "uid-rl-2")))
+
+        val frame = sent().last()
+        assertEquals(MsgType.ERROR, frame.msgType)
+        assertTrue(frame.data.jsonObject["message"]!!.jsonPrimitive.content.contains("Rate limit", ignoreCase = true))
     }
 
     @Test

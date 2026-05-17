@@ -2,17 +2,32 @@ package kz.global.api.ws.handlers
 
 import kz.global.api.domain.records.RecordResult
 import kz.global.api.domain.records.RecordService
+import kz.global.api.security.WsPayloadValidator
+import kz.global.api.security.WsRateLimiters
 import kz.global.api.ws.*
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 
-class AddRecordHandler(private val recordService: RecordService) {
+class AddRecordHandler(
+    private val recordService: RecordService,
+    private val rateLimiters: WsRateLimiters,
+) {
 
     private val log = LoggerFactory.getLogger(AddRecordHandler::class.java)
     private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun handle(session: GameServerSession, envelope: WsEnvelope) {
+        if (!rateLimiters.addRecordByServer.tryAcquire(session.serverId.toString())) {
+            session.sendError(envelope.msgId, "Rate limit exceeded")
+            return
+        }
+
         val payload = json.decodeFromJsonElement(AddRecordPayload.serializer(), envelope.data)
+
+        WsPayloadValidator.validateAddRecord(payload)?.let {
+            session.sendError(envelope.msgId, it)
+            return
+        }
 
         if (payload.checkpoints < 0 || payload.checkpoints > 65_535) {
             session.sendError(envelope.msgId, "Invalid checkpoints")
@@ -50,7 +65,7 @@ class AddRecordHandler(private val recordService: RecordService) {
             }
             is RecordResult.Rejected -> {
                 log.info("Record rejected for server {}: {}", session.serverId, result.reason)
-                session.sendError(envelope.msgId, "Record rejected: ${result.reason}")
+                session.sendError(envelope.msgId, "Record rejected")
             }
         }
     }

@@ -9,6 +9,7 @@ import kz.global.api.db.tables.GameServersTable
 import kz.global.api.util.toHex
 import kz.global.api.ws.ConnectedServersRegistry
 import kotlinx.coroutines.Dispatchers
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
@@ -17,7 +18,15 @@ import org.koin.ktor.ext.inject
 import java.security.SecureRandom
 
 @Serializable
-data class CreateServerRequest(val name: String)
+data class CreateServerRequest(
+    val name: String,
+    @SerialName("allowed_ips") val allowedIps: String? = null,
+)
+
+@Serializable
+data class PatchServerRequest(
+    @SerialName("allowed_ips") val allowedIps: String? = null,
+)
 
 @Serializable
 data class CreateServerResponse(val id: Int, val name: String, val accessKey: String)
@@ -59,6 +68,7 @@ fun Route.serversRoute() {
                     GameServersTable.insert {
                         it[name] = req.name
                         it[accessKey] = keyBytes
+                        it[allowedIps] = req.allowedIps
                     }[GameServersTable.id]
                 }
 
@@ -67,6 +77,23 @@ fun Route.serversRoute() {
                     name = req.name,
                     accessKey = keyBytes.toHex(),
                 ))
+            }
+
+            patch("/{id}") {
+                val serverId = call.parameters["id"]?.toIntOrNull()
+                    ?: return@patch call.respond(HttpStatusCode.BadRequest, "Invalid id")
+
+                val req = call.receive<PatchServerRequest>()
+                if (req.allowedIps == null) {
+                    return@patch call.respond(HttpStatusCode.BadRequest, "No fields to update")
+                }
+
+                suspendTransaction {
+                    GameServersTable.update({ GameServersTable.id eq serverId }) {
+                        it[allowedIps] = req.allowedIps
+                    }
+                }
+                call.respond(HttpStatusCode.NoContent)
             }
 
             delete("/{id}") {

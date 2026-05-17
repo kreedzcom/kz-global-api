@@ -25,6 +25,7 @@ data class AppConfig(
     val database: DatabaseConfig,
     val r2: R2Config,
     val admin: AdminConfig,
+    val security: SecurityConfig,
 )
 
 fun Application.loadAppConfig(): AppConfig = AppConfig(
@@ -43,5 +44,6 @@ fun Application.loadAppConfig(): AppConfig = AppConfig(
     ),
     admin = AdminConfig(
         bearerKey = environment.config.property("admin.bearerKey").getString(),
-    )
+    ),
+    security = environment.config.loadSecurityConfig(),
 )

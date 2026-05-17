@@ -22,6 +22,7 @@ class AppConfigLoadTest {
                 put("r2.secretAccessKey", "s")
                 put("r2.bucket", "b")
                 put("admin.bearerKey", "admin-key")
+                put("security.metricsBearerKey", "metrics-key")
             }
         }
 
@@ -29,6 +30,9 @@ class AppConfigLoadTest {
             val c = loadAppConfig()
 
             assertEquals(10, c.database.maximumPoolSize)
+            assertEquals("metrics-key", c.security.metricsBearerKey)
+            assertEquals(2_097_152L, c.security.maxWsFrameBytes)
+            assertEquals(120, c.security.addRecordPerServerPerMinute)
         }
     }
 
@@ -45,6 +49,8 @@ class AppConfigLoadTest {
                 put("r2.secretAccessKey", "s")
                 put("r2.bucket", "b")
                 put("admin.bearerKey", "admin-key")
+                put("security.metricsBearerKey", "metrics-key")
+                put("security.addRecordPerServerPerMinute", "42")
             }
         }
 
@@ -52,6 +58,7 @@ class AppConfigLoadTest {
             val c = loadAppConfig()
 
             assertEquals(3, c.database.maximumPoolSize)
+            assertEquals(42, c.security.addRecordPerServerPerMinute)
         }
     }
 
