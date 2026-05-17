@@ -1,29 +1,54 @@
 package kz.global.api.ws.handlers
 
+import kz.global.api.config.SecurityConfig
 import kz.global.api.db.tables.*
+import kz.global.api.security.WsPayloadValidator
+import kz.global.api.security.WsRateLimiters
 import kz.global.api.ws.*
-import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.json.Json
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 
-class PlayerRecordsHandler {
+class PlayerRecordsHandler(
+    private val security: SecurityConfig,
+    private val rateLimiters: WsRateLimiters,
+) {
 
     private val json = Json { ignoreUnknownKeys = true }
 
     suspend fun handle(session: GameServerSession, envelope: WsEnvelope) {
+        if (!rateLimiters.readQueryByServer.tryAcquire(session.serverId.toString())) {
+            session.sendError(envelope.msgId, "Rate limit exceeded")
+            return
+        }
+
         val payload = json.decodeFromJsonElement(WantPlayerRecordsPayload.serializer(), envelope.data)
+
+        WsPayloadValidator.validateSteamId(payload.steamid)?.let {
+            session.sendError(envelope.msgId, it)
+            return
+        }
+        WsPayloadValidator.validateMapName(payload.mapName)?.let {
+            session.sendError(envelope.msgId, it)
+            return
+        }
+
+        val effectiveLimit = when {
+            payload.limit <= 0 -> security.wantPlayerRecordsDefaultLimit
+            else -> payload.limit.coerceIn(1, security.wantPlayerRecordsMaxLimit)
+        }
 
         val records = suspendTransaction {
             MapRecordsTable
                 .selectAll()
                 .where {
                     (MapRecordsTable.playerSteamid eq payload.steamid) and
-                    (MapRecordsTable.mapName eq payload.mapName) and
-                    (MapRecordsTable.flagged eq false)
+                        (MapRecordsTable.mapName eq payload.mapName) and
+                        (MapRecordsTable.flagged eq false)
                 }
                 .orderBy(MapRecordsTable.timeMs)
+                .limit(effectiveLimit)
                 .map { row ->
                     PlayerRecordEntry(
                         mapName = row[MapRecordsTable.mapName],

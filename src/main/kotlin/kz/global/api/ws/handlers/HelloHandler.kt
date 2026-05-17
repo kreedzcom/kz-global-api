@@ -4,6 +4,7 @@ import io.ktor.websocket.*
 import kz.global.api.db.tables.PluginVersionsTable
 import kz.global.api.domain.broadcast.BroadcastService
 import kz.global.api.events.AuditLogger
+import kz.global.api.security.WsPayloadValidator
 import kz.global.api.util.fromHex
 import kz.global.api.ws.*
 import kotlinx.serialization.json.Json
@@ -22,6 +23,11 @@ class HelloHandler(
 
     suspend fun handle(session: GameServerSession, envelope: WsEnvelope) {
         val payload = json.decodeFromJsonElement(HelloPayload.serializer(), envelope.data)
+
+        WsPayloadValidator.validateMapName(payload.mapName)?.let {
+            session.socket.close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, it))
+            return
+        }
 
         val checksumBytes = runCatching { payload.pluginChecksum.fromHex() }.getOrNull()
         if (checksumBytes == null || checksumBytes.size != 16) {

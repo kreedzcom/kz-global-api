@@ -6,6 +6,7 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kz.global.api.db.tables.*
+import kz.global.api.security.WsPayloadValidator
 import kz.global.api.storage.R2Client
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -70,6 +71,13 @@ fun Route.recordsRoute() {
                     ?: return@patch call.respond(HttpStatusCode.BadRequest, "Invalid UUID")
 
                 val req = call.receive<PatchRecordRequest>()
+
+                if (req.timeMs != null) {
+                    val timeError = WsPayloadValidator.validateAdminRecordTime(req.timeMs)
+                    if (timeError != null) {
+                        return@patch call.respond(HttpStatusCode.BadRequest, timeError)
+                    }
+                }
 
                 suspendTransaction() {
                     MapRecordsTable.update({ MapRecordsTable.id eq recordId }) {
