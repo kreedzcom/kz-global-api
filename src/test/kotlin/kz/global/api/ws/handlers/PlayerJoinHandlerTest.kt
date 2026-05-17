@@ -1,6 +1,7 @@
 package kz.global.api.ws.handlers
 
 import kz.global.api.db.tables.PlayersTable
+import kz.global.api.domain.players.PlayerBanService
 import kz.global.api.support.TestDatabase
 import kz.global.api.support.mockSession
 import kz.global.api.ws.*
@@ -17,7 +18,7 @@ import kotlin.test.*
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class PlayerJoinHandlerTest {
 
-    private val handler = PlayerJoinHandler()
+    private val handler = PlayerJoinHandler(PlayerBanService())
 
     @BeforeAll
     fun setupClass() {

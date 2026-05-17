@@ -3,10 +3,12 @@ package kz.global.api.domain.records
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.mockk
 import kz.global.api.db.tables.*
+import kz.global.api.domain.players.PlayerBanService
 import kz.global.api.events.AuditLogger
 import kz.global.api.events.KzEventBus
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.support.TestDatabase
+import kz.global.api.support.testSecurityConfig
 import kz.global.api.ws.AddRecordPayload
 import kz.global.api.ws.ConnectedServersRegistry
 import kotlinx.coroutines.test.runTest
@@ -31,7 +33,8 @@ class RecordServiceTest {
     private val auditLogger = mockk<AuditLogger>(relaxed = true)
     private val eventBus = KzEventBus()
     private val metrics = KzMetrics(SimpleMeterRegistry(), ConnectedServersRegistry())
-    private val service = RecordService(eventBus, auditLogger, metrics)
+    private val banService = PlayerBanService()
+    private val service = RecordService(eventBus, auditLogger, metrics, banService, testSecurityConfig())
 
     private var serverId = 0
     private var pluginVersionId = 0

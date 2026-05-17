@@ -2,6 +2,8 @@ package kz.global.api.ws.handlers
 
 import kz.global.api.db.tables.*
 import kz.global.api.support.TestDatabase
+import kz.global.api.support.testSecurityConfig
+import kz.global.api.support.testWsRateLimiters
 import kz.global.api.support.mockSession
 import kz.global.api.util.uuidV7
 import kz.global.api.ws.*
@@ -20,7 +22,7 @@ import kotlin.test.*
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class PlayerRecordsHandlerTest {
 
-    private val handler = PlayerRecordsHandler()
+    private val handler = PlayerRecordsHandler(testSecurityConfig(), testWsRateLimiters())
 
     private var serverId = 0
     private var pluginVersionId = 0

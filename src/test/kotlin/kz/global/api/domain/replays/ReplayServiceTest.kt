@@ -4,6 +4,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.mockk
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.storage.R2Client
+import kz.global.api.support.testSecurityConfig
 import kz.global.api.ws.ConnectedServersRegistry
 import java.util.zip.CRC32
 import kotlin.test.*
@@ -13,7 +14,10 @@ class ReplayServiceTest {
     private val service = ReplayService(
         r2Client = mockk(relaxed = true),
         metrics = KzMetrics(SimpleMeterRegistry(), ConnectedServersRegistry()),
+        security = testSecurityConfig(),
     )
+
+    private val serverId = 1
 
     // ─── parseChunk ──────────────────────────────────────────────────────────
 
@@ -89,7 +93,7 @@ class ReplayServiceTest {
         val data = ByteArray(8) { 0x42 }
         val parsed = service.parseChunk(buildChunk("uid", data, 0, 1, badCrc = true))!!
 
-        val result = service.receive(parsed)
+        val result = service.receive(parsed, serverId)
 
         assertIs<ReplayAssemblyResult.Rejected.CrcMismatch>(result)
     }
@@ -99,7 +103,7 @@ class ReplayServiceTest {
         val data = ByteArray(4) { it.toByte() }
         val chunk = service.parseChunk(buildChunk("multi-uid", data, 0, 3))!!
 
-        val result = service.receive(chunk)
+        val result = service.receive(chunk, serverId)
 
         assertSame(ReplayAssemblyResult.Pending, result)
     }
@@ -109,7 +113,7 @@ class ReplayServiceTest {
         val payload = ZSTD_MAGIC + ByteArray(100) { it.toByte() }
         val parsed = service.parseChunk(buildChunk("single-uid", payload, 0, 1))!!
 
-        val result = service.receive(parsed)
+        val result = service.receive(parsed, serverId)
 
         val complete = assertIs<ReplayAssemblyResult.Complete>(result)
         assertContentEquals(ZSTD_MAGIC, complete.bytes.take(4).toByteArray())
@@ -124,8 +128,8 @@ class ReplayServiceTest {
         val c0 = service.parseChunk(buildChunk(uid, ZSTD_MAGIC + part0, 0, 2))!!
         val c1 = service.parseChunk(buildChunk(uid, part1, 1, 2))!!
 
-        assertSame(ReplayAssemblyResult.Pending, service.receive(c0))
-        val assembled = assertIs<ReplayAssemblyResult.Complete>(service.receive(c1))
+        assertSame(ReplayAssemblyResult.Pending, service.receive(c0, serverId))
+        val assembled = assertIs<ReplayAssemblyResult.Complete>(service.receive(c1, serverId))
 
         assertContentEquals(fullExpected, assembled.bytes)
     }
@@ -135,7 +139,7 @@ class ReplayServiceTest {
         val notZstd = ByteArray(20) { 0xAA.toByte() }
         val parsed = service.parseChunk(buildChunk("bad-magic-uid", notZstd, 0, 1))!!
 
-        val result = service.receive(parsed)
+        val result = service.receive(parsed, serverId)
 
         assertIs<ReplayAssemblyResult.Rejected.BadZstdMagic>(result)
     }
@@ -145,10 +149,10 @@ class ReplayServiceTest {
         val uid = "cleanup-uid"
         val data = ZSTD_MAGIC + ByteArray(10)
         val first = service.parseChunk(buildChunk(uid, data, 0, 1))!!
-        assertIs<ReplayAssemblyResult.Complete>(service.receive(first))
+        assertIs<ReplayAssemblyResult.Complete>(service.receive(first, serverId))
 
         val second = service.parseChunk(buildChunk(uid, data, 0, 1))!!
-        val result = service.receive(second)
+        val result = service.receive(second, serverId)
 
         assertIs<ReplayAssemblyResult.Complete>(result)
     }

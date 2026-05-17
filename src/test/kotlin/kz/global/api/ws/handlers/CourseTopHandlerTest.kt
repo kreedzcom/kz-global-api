@@ -20,7 +20,7 @@ import kotlin.test.*
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class CourseTopHandlerTest {
 
-    private val handler = CourseTopHandler()
+    private val handler = CourseTopHandler(kz.global.api.support.testWsRateLimiters())
 
     private var serverId = 0
     private var pluginVersionId = 0

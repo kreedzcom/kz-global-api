@@ -36,7 +36,7 @@ class GameServerAuthTest {
             }[GameServersTable.id]
         }
 
-        val result = resolveGameServerToken(key.toHex())
+        val result = resolveGameServerToken(key.toHex(), "127.0.0.1")
 
         assertEquals(serverId, result)
     }
@@ -51,7 +51,7 @@ class GameServerAuthTest {
             }[GameServersTable.id]
         }
 
-        resolveGameServerToken(key.toHex())
+        resolveGameServerToken(key.toHex(), "127.0.0.1")
 
         val lastConnected = transaction {
             GameServersTable.selectAll()
@@ -63,14 +63,14 @@ class GameServerAuthTest {
 
     @Test
     fun `returns null for non-hex string`() = runTest {
-        val result = resolveGameServerToken("not-valid-hex!!!")
+        val result = resolveGameServerToken("not-valid-hex!!!", "127.0.0.1")
 
         assertNull(result)
     }
 
     @Test
     fun `returns null for odd-length hex string`() = runTest {
-        val result = resolveGameServerToken("abc")
+        val result = resolveGameServerToken("abc", "127.0.0.1")
 
         assertNull(result)
     }
@@ -79,7 +79,7 @@ class GameServerAuthTest {
     fun `returns null when key hex decodes to fewer than 16 bytes`() = runTest {
         val shortKey = ByteArray(8) { it.toByte() }.toHex()
 
-        val result = resolveGameServerToken(shortKey)
+        val result = resolveGameServerToken(shortKey, "127.0.0.1")
 
         assertNull(result)
     }
@@ -88,7 +88,7 @@ class GameServerAuthTest {
     fun `returns null when key hex decodes to more than 16 bytes`() = runTest {
         val longKey = ByteArray(32) { it.toByte() }.toHex()
 
-        val result = resolveGameServerToken(longKey)
+        val result = resolveGameServerToken(longKey, "127.0.0.1")
 
         assertNull(result)
     }
@@ -97,7 +97,7 @@ class GameServerAuthTest {
     fun `returns null when no server matches the key`() = runTest {
         val unknownKey = ByteArray(16) { 0xFF.toByte() }.toHex()
 
-        val result = resolveGameServerToken(unknownKey)
+        val result = resolveGameServerToken(unknownKey, "127.0.0.1")
 
         assertNull(result)
     }
@@ -113,7 +113,7 @@ class GameServerAuthTest {
             }
         }
 
-        val result = resolveGameServerToken(key.toHex())
+        val result = resolveGameServerToken(key.toHex(), "127.0.0.1")
 
         assertNull(result)
     }
@@ -135,7 +135,22 @@ class GameServerAuthTest {
             }[GameServersTable.id]
         }
 
-        assertEquals(id1, resolveGameServerToken(key1.toHex()))
-        assertEquals(id2, resolveGameServerToken(key2.toHex()))
+        assertEquals(id1, resolveGameServerToken(key1.toHex(), "127.0.0.1"))
+        assertEquals(id2, resolveGameServerToken(key2.toHex(), "127.0.0.1"))
+    }
+
+    @Test
+    fun `returns null when client IP is not in allowed_ips`() = runTest {
+        val key = ByteArray(16) { 0x42 }
+        transaction {
+            GameServersTable.insert {
+                it[name] = "ip-restricted"
+                it[accessKey] = key
+                it[allowedIps] = "203.0.113.10"
+            }
+        }
+
+        assertNull(resolveGameServerToken(key.toHex(), "127.0.0.1"))
+        assertNotNull(resolveGameServerToken(key.toHex(), "203.0.113.10"))
     }
 }
