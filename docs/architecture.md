@@ -8,7 +8,7 @@ It provides a centralised, server-authoritative store for runs, leaderboards, an
 The service is written in **Kotlin / Ktor (Netty)** and exposes two distinct surfaces:
 
 - **WebSocket endpoint** (`/ws/game`) — persistent connections from game servers; all real-time game events flow here.
-- **Admin REST API** (`/admin/*`) — management of servers, plugin versions, map minimum times, and records.
+- **Admin REST API** (`/admin/*`) — management of servers, plugin versions, map minimum times, records, and player bans.
 
 ---
 
@@ -82,16 +82,19 @@ plugin              kz-global-api             PostgreSQL
   |── PLAYER_JOIN ────────►|── upsert player ─────►|
   |◄─ (ack with is_banned)|                       |
   |                       |                       |
-  |── ADD_RECORD ─────────►|── check min time ────►|
+  |── ADD_RECORD ─────────►|── validate payload ──►|
+  |                       |── check min time ────►|
   |                       |── insert record ──────►|
-  |                       |── update leaderboards ►|
+  |                       |── update leaderboards ►|  (or defer if replay-required)
   |◄─ RECORD_ACK ─────────|                       |
   |                       |── emit KzEvent ───────►BroadcastService
   |                       |                       |── push WR to
   |                       |                       |   all servers on map
-  |── binary replay ──────►|── assemble chunks    |
+  |── binary replay ──────►|── rate-limit bytes   |
+  |                       |── assemble chunks    |
   |                       |── store to R2          |
   |◄─ FILE_ACK ───────────|── update replay_r2_key►|
+  |                       |── finalize leaderboard ►|  (if was pending)
 ```
 
 ### Admin REST request
@@ -115,10 +118,16 @@ Admin client          kz-global-api             PostgreSQL
 kz/global/api/
 ├── Application.kt              Entry point — wires Ktor plugins, Koin, routes, shutdown hook
 ├── config/
-│   └── AppConfig.kt            HOCON → typed config data classes (DB, R2, admin key)
+│   ├── AppConfig.kt            HOCON → typed config data classes (DB, R2, admin, security)
+│   └── SecurityConfig.kt       Rate limits, replay caps, metrics auth, replay-required mode
 ├── auth/
 │   ├── AdminAuth.kt            Ktor bearer auth provider for admin routes
-│   └── GameServerAuth.kt       Resolves game server from hex Bearer token
+│   └── GameServerAuth.kt       Resolves game server from hex Bearer token + IP allowlist
+├── security/
+│   ├── WsPayloadValidator.kt   Steam ID, map name, time, local_uid validation
+│   ├── FixedWindowRateLimiter.kt  Per-key request and byte budgets
+│   ├── WsRateLimiters.kt       WS upgrade, ADD_RECORD, reads, replay throughput
+│   └── IpAllowlist.kt          Optional per-server source IP restriction
 ├── db/
 │   ├── DatabaseFactory.kt      HikariCP + Flyway + Exposed connect
 │   └── tables/                 Exposed table objects mirroring the Flyway schema
@@ -129,11 +138,15 @@ kz/global/api/
 │   ├── ServersRoute.kt
 │   ├── PluginVersionsRoute.kt
 │   ├── RecordsRoute.kt
-│   └── MapTimesRoute.kt
+│   ├── MapTimesRoute.kt
+│   └── PlayersRoute.kt         Ban / unban players
 ├── domain/
 │   ├── records/RecordService.kt    Core run-submission logic
 │   ├── replays/ReplayService.kt    Chunk reassembly, ZSTD validation, R2 upload
+│   ├── players/PlayerBanService.kt Player ban lookups and updates
 │   └── broadcast/BroadcastService.kt  Fan-out WR updates to connected servers
+├── jobs/
+│   └── EventLogRetentionJob.kt Purges old audit log rows on a schedule
 ├── events/
 │   ├── KzEventBus.kt           Internal SharedFlow event bus
 │   └── AuditLogger.kt          Writes structured events to event_log
@@ -143,7 +156,8 @@ kz/global/api/
 │   └── R2Client.kt             AWS SDK wrapper for Cloudflare R2
 ├── util/
 │   ├── Hex.kt                  ByteArray ↔ hex string helpers
-│   └── UuidV7.kt               Time-ordered UUID v7 generator
+│   ├── UuidV7.kt               Time-ordered UUID v7 generator
+│   └── ClientIp.kt             Client IP from X-Forwarded-For or socket
 └── ws/
     ├── GameServerWsRoute.kt    WS upgrade, frame dispatch, session lifecycle
     ├── WsMessage.kt            Message type constants, envelope, all payload types
@@ -162,12 +176,34 @@ Two independent schemes coexist.
 
 - The admin creates a server via `POST /admin/servers`. The API generates a cryptographically random 16-byte key stored as `BYTEA` in `game_server.access_key` and returns it hex-encoded (32 chars).
 - The plugin includes this key as an HTTP `Authorization: Bearer <hex>` header on the WS upgrade request.
-- `GameServerAuth.resolveGameServerToken` decodes the hex, queries for a matching active server, updates `last_connected_at`, and returns the server id.
+- `GameServerAuth.resolveGameServerToken` decodes the hex, queries for a matching active server, checks optional `game_server.allowed_ips` against the client IP (from `X-Forwarded-For` when behind Traefik), updates `last_connected_at`, and returns the server id.
+- WS upgrades are rate-limited per client IP before token validation.
 
 ### Admin API
 
 - A single static bearer key is set via the `ADMIN_BEARER_KEY` environment variable.
-- Ktor's built-in bearer auth provider validates every request to `/admin/*`.
+- Ktor's bearer auth provider validates every request to `/admin/*` using constant-time token comparison.
+
+---
+
+## Security
+
+Application-layer abuse controls (all tunable under `security.*` in `application.conf`):
+
+| Control | Purpose |
+|---------|---------|
+| **WS payload validation** | Steam ID format, map name charset/length, positive bounded `time_ms`, `local_uid` format |
+| **Rate limits** | Per-IP WS upgrades; per-server `ADD_RECORD`/min; per-server read-query QPS; replay bytes/sec |
+| **WebSocket `maxFrameSize`** | Caps size of a single binary/text frame (default 2 MiB) |
+| **Replay assembly caps** | Max assembled replay bytes (default 100 MiB), max concurrent in-flight uploads per server, TTL eviction of stale partial uploads |
+| **Replay binding** | In-memory upload state and R2 store require matching `server_id` + `local_uid` |
+| **Player bans** | `player.is_banned` enforced on `PLAYER_JOIN` and `ADD_RECORD`; admin `PATCH /admin/players/{steamid}/ban` |
+| **Replay-required leaderboards** | When `REQUIRE_REPLAY_FOR_LEADERBOARD=true`, PB/WR updates and WR broadcasts wait until replay is stored (`leaderboard_pending` on `map_record`) |
+| **WR improvement ratio** | Optional `MAX_WR_IMPROVEMENT_RATIO` rejects runs that beat the WR by more than a configured fraction |
+| **Metrics auth** | `GET /metrics` requires `METRICS_BEARER_KEY` when set (Prometheus scrapes with bearer token in production) |
+| **Event log retention** | Background job deletes `event_log` rows older than configured days |
+
+Edge rate limiting and TLS are handled by Traefik / Cloudflare in production (`kz-global-infra`).
 
 ---
 
@@ -190,11 +226,15 @@ Events are emitted **after** the database transaction commits to keep them consi
 
 `RecordService.submit` runs inside a single `suspendTransaction`:
 
-1. **Idempotency check** — if `local_uid` already exists, return `RecordResult.Duplicate` with the existing record id.
-2. **Anti-cheat** — if `map_minimum_time` exists for the map and the submitted time is below it, return `RecordResult.Rejected`.
-3. **Insert** — create `map_record` row with a UUIDv7 id.
-4. **Leaderboard update** — if **`gochecks == 0`**: upsert `best_pro_record` and possibly `world_record` (`pro`); otherwise upsert `best_nub_record` and possibly `world_record` (`nub`). A run never updates both categories.
-6. After the transaction: emit `KzEvent.NewRecord` and optionally `KzEvent.NewWorldRecord`; write audit log.
+1. **Ban check** — reject if `player.is_banned`.
+2. **WR improvement ratio** — if `MAX_WR_IMPROVEMENT_RATIO` is set and a WR exists, reject impossibly large improvements vs the current WR time.
+3. **Idempotency check** — if `local_uid` already exists, return `RecordResult.Duplicate` with the existing record id.
+4. **Anti-cheat** — if `map_minimum_time` exists for the map and the submitted time is below it, return `RecordResult.Rejected`.
+5. **Insert** — create `map_record` row with a UUIDv7 id; set `leaderboard_pending` when replay-required mode is enabled.
+6. **Leaderboard update** — unless deferred: if **`gochecks == 0`**, upsert `best_pro_record` and possibly `world_record` (`pro`); otherwise upsert `best_nub_record` and possibly `world_record` (`nub`). A run never updates both categories.
+7. After the transaction (or after replay store when pending): emit `KzEvent.NewRecord` and optionally `KzEvent.NewWorldRecord`; write audit log.
+
+`RecordService.finalizePendingLeaderboard(localUid)` runs the deferred leaderboard step after a successful R2 upload.
 
 ---
 
@@ -213,7 +253,7 @@ Replays are uploaded as a sequence of binary WebSocket frames, each containing a
 | 80 | 4 B | total chunk count |
 | 84 | 4 B | padding |
 
-`ReplayService` validates each chunk's CRC32, assembles them in memory, verifies the ZSTD magic bytes (`0x28 0xB5 0x2F 0xFD`) of the concatenated payload, then uploads the result to R2 under the key `replays/{record_uuid}.krpz` and records the key in `map_record.replay_r2_key`.
+`ReplayService` validates each chunk's CRC32, assembles them in memory (with per-server concurrency, TTL, and max-byte caps), verifies the ZSTD magic bytes (`0x28 0xB5 0x2F 0xFD`) of the concatenated payload, then uploads the result to R2 under the key `replays/{record_uuid}.krpz` and records the key in `map_record.replay_r2_key`. Each in-flight upload is bound to the `server_id` that started it.
 
 ---
 
@@ -221,7 +261,9 @@ Replays are uploaded as a sequence of binary WebSocket frames, each containing a
 
 ### Metrics (`/metrics`)
 
-Prometheus scrape endpoint. Key metrics:
+Prometheus scrape endpoint. When `METRICS_BEARER_KEY` is set, requests must include `Authorization: Bearer <key>`. In production, only Prometheus on the internal Docker network should reach this path.
+
+Key metrics:
 
 | Metric | Type | Description |
 |--------|------|-------------|
@@ -240,7 +282,7 @@ Set `LOG_FORMAT=json` to switch Logback to Logstash JSON output, ready for log a
 
 ### Audit log
 
-Every significant mutation (server created, record deleted, plugin cutoff, etc.) is written to the `event_log` table by `AuditLogger` with `event_type` and a JSON payload string, allowing full traceability without an external system.
+Every significant mutation (server created, record deleted, plugin cutoff, etc.) is written to the `event_log` table by `AuditLogger` with `event_type` and a JSON payload string, allowing full traceability without an external system. `EventLogRetentionJob` purges rows older than `security.eventLogRetentionDays` (default 90).
 
 ---
 
@@ -259,8 +301,13 @@ All configuration is injected through environment variables consumed by `applica
 | `R2_SECRET_ACCESS_KEY` | ✓        | R2 secret key                                    |
 | `R2_BUCKET`            | ✓        | Bucket name for replay storage                   |
 | `ADMIN_BEARER_KEY`     | ✓        | Static bearer token for admin API                |
+| `METRICS_BEARER_KEY`   |          | Bearer token for `GET /metrics` (recommended in prod) |
+| `REQUIRE_REPLAY_FOR_LEADERBOARD` | | Set `true` to defer PB/WR until replay is stored |
+| `MAX_WR_IMPROVEMENT_RATIO` |      | Optional `0.0`–`1.0`; max fractional WR improvement per run |
 | `PORT`                 |          | HTTP port (default 8080)                         |
 | `LOG_FORMAT`           |          | Set to `json` for structured logging             |
+
+Additional tunables (`security.maxReplayBytes`, rate limits, etc.) have defaults in `application.conf` and are documented in `.env.example` comments where exposed as env vars.
 
 ---
 

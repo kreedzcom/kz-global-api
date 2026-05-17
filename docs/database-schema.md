@@ -37,7 +37,10 @@ Represents a registered CS 1.6 server.
 | `access_key` | `BYTEA` UNIQUE NOT NULL | 16-byte random key used for WS authentication |
 | `active` | `BOOLEAN` NOT NULL | `false` = deactivated (soft-delete); open WS sessions are also disconnected |
 | `last_connected_at` | `TIMESTAMPTZ` | Updated on each successful WS auth |
+| `allowed_ips` | `VARCHAR(1024)` | Optional comma-separated client IPs; empty = no restriction (V5) |
 | `created_at` | `TIMESTAMPTZ` NOT NULL | Set by DB default |
+
+Admin can set `allowed_ips` on create (`POST /admin/servers`) or `PATCH /admin/servers/{id}`.
 
 ---
 
@@ -69,6 +72,7 @@ A Steam player seen on at least one server.
 | `ip_address` | `VARCHAR(45)` | Optional; last known IP |
 | `first_seen_at` | `TIMESTAMPTZ` NOT NULL | |
 | `last_seen_at` | `TIMESTAMPTZ` NOT NULL | |
+| `is_banned` | `BOOLEAN` NOT NULL DEFAULT `false` | When `true`, `ADD_RECORD` is rejected and join ack reports banned (V5) |
 
 `steamid` is a natural key (VARCHAR PK, not an auto-increment). Use `upsert` — not `insert` — when writing from Exposed lambdas (Kotlin column name shadows outer variables; always capture to a local `val` first).
 
@@ -137,6 +141,7 @@ A single completed run.
 | `replay_r2_key` | `VARCHAR(255)` | R2 object key once replay is uploaded (`replays/{uuid}.krpz`) |
 | `flagged` | `BOOLEAN` NOT NULL DEFAULT `false` | Anti-cheat review flag |
 | `reviewed` | `BOOLEAN` NOT NULL DEFAULT `false` | Set when admin has reviewed the record |
+| `leaderboard_pending` | `BOOLEAN` NOT NULL DEFAULT `false` | `true` = PB/WR not applied until replay stored (V5) |
 | `plugin_version_id` | `INTEGER` NOT NULL → `plugin_version(id)` | Which plugin build submitted it |
 | `created_at` | `TIMESTAMPTZ` NOT NULL | |
 
@@ -176,6 +181,12 @@ The single fastest run globally per map + category.
 
 Updated by `RecordService` when `best_pro_record` / `best_nub_record` is lower than the current WR.  
 A `KzEvent.NewWorldRecord` is emitted after the transaction, which `BroadcastService` uses to push updated `MAP_INFO` to all live servers on that map.
+
+---
+
+### V5 security columns
+
+Migration `V5__security.sql` adds `player.is_banned`, `game_server.allowed_ips`, and `map_record.leaderboard_pending` (see table sections above).
 
 ---
 
