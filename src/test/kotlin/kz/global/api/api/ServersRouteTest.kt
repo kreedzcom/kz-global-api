@@ -127,6 +127,84 @@ class ServersRouteTest {
         assertEquals(1L, count)
     }
 
+    // ─── PATCH /admin/servers/{id} ────────────────────────────────────────────
+
+    @Test
+    fun `PATCH server updates allowed_ips`() = testApplication {
+        setupAdminRoutes()
+        val serverId = transaction {
+            GameServersTable.insert {
+                it[name] = "ip-patch"
+                it[accessKey] = ByteArray(16)
+            }[GameServersTable.id]
+        }
+
+        val response = client.patch("/admin/servers/$serverId") {
+            header(HttpHeaders.Authorization, adminAuth())
+            contentType(ContentType.Application.Json)
+            setBody("""{"allowed_ips":"203.0.113.10,203.0.113.11"}""")
+        }
+
+        assertEquals(HttpStatusCode.NoContent, response.status)
+
+        val allowedIps = transaction {
+            GameServersTable.selectAll()
+                .where { GameServersTable.id eq serverId }
+                .single()[GameServersTable.allowedIps]
+        }
+        assertEquals("203.0.113.10,203.0.113.11", allowedIps)
+    }
+
+    @Test
+    fun `PATCH server with non-numeric id returns 400`() = testApplication {
+        setupAdminRoutes()
+
+        val response = client.patch("/admin/servers/not-an-id") {
+            header(HttpHeaders.Authorization, adminAuth())
+            contentType(ContentType.Application.Json)
+            setBody("""{"allowed_ips":"203.0.113.10"}""")
+        }
+
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
+
+    @Test
+    fun `PATCH server without allowed_ips returns 400`() = testApplication {
+        setupAdminRoutes()
+        val serverId = transaction {
+            GameServersTable.insert {
+                it[name] = "ip-patch-missing"
+                it[accessKey] = ByteArray(16)
+            }[GameServersTable.id]
+        }
+
+        val response = client.patch("/admin/servers/$serverId") {
+            header(HttpHeaders.Authorization, adminAuth())
+            contentType(ContentType.Application.Json)
+            setBody("{}")
+        }
+
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
+
+    @Test
+    fun `PATCH server requires admin auth`() = testApplication {
+        setupAdminRoutes()
+        val serverId = transaction {
+            GameServersTable.insert {
+                it[name] = "ip-patch-auth"
+                it[accessKey] = ByteArray(16)
+            }[GameServersTable.id]
+        }
+
+        val response = client.patch("/admin/servers/$serverId") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"allowed_ips":"203.0.113.10"}""")
+        }
+
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+    }
+
     // ─── DELETE /admin/servers/{id} ───────────────────────────────────────────
 
     @Test
