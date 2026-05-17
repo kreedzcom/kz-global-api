@@ -216,8 +216,10 @@ No response is sent.
 ### `WANT_PLAYER_RECORDS` (7)
 
 ```json
-{ "steamid": "STEAM_0:0:12345", "map_name": "kz_canyon" }
+{ "steamid": "STEAM_0:0:12345", "map_name": "kz_canyon", "limit": 50 }
 ```
+
+`limit` is optional (default **50**, max **100**). Results are ordered by `time_ms` ascending.
 
 `PLAYER_RECORDS` (104) response:
 

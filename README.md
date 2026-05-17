@@ -24,6 +24,12 @@ Or run locally:
 
 API available at `http://localhost:8080`. Health check: `GET /health`.
 
+Prometheus metrics: `GET /metrics` (requires `Authorization: Bearer <METRICS_BEARER_KEY>` when set — see `.env.example`).
+
+## Security
+
+Game servers authenticate with a per-server hex key on WebSocket upgrade; admins use `ADMIN_BEARER_KEY` on `/admin/*`. Optional controls include rate limits, replay size caps, player bans, per-server IP allowlists, and replay-required leaderboards — see [docs/architecture.md](docs/architecture.md#security) and `.env.example`.
+
 ## Development
 
 ```bash
