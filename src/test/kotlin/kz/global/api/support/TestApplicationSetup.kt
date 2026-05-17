@@ -76,6 +76,7 @@ fun ApplicationTestBuilder.setupAdminRoutes(
             pluginVersionsRoute()
             recordsRoute()
             mapTimesRoute()
+            playersRoute()
         }
     }
 }

@@ -30,4 +30,19 @@ class WsPayloadValidatorTest {
         assertNotNull(WsPayloadValidator.validateAddRecord(payload))
     }
 
+    @Test
+    fun `validateRecordTime rejects time above 24 hours`() {
+        assertNotNull(WsPayloadValidator.validateRecordTime(WsPayloadValidator.MAX_RECORD_TIME_MS + 1))
+    }
+
+    @Test
+    fun `validateMapName rejects empty name`() {
+        assertNotNull(WsPayloadValidator.validateMapName(""))
+    }
+
+    @Test
+    fun `validateLocalUid rejects blank uid`() {
+        assertNotNull(WsPayloadValidator.validateLocalUid("   "))
+    }
+
 }

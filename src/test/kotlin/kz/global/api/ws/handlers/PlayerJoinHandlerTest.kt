@@ -1,6 +1,7 @@
 package kz.global.api.ws.handlers
 
 import kz.global.api.db.tables.PlayersTable
+import org.jetbrains.exposed.v1.jdbc.insert
 import kz.global.api.domain.players.PlayerBanService
 import kz.global.api.support.TestDatabase
 import kz.global.api.support.mockSession
@@ -88,5 +89,22 @@ class PlayerJoinHandlerTest {
         assertEquals(5L, frame.msgId)
         assertEquals("STEAM_0:0:4", frame.data.jsonObject["steamid"]!!.jsonPrimitive.content)
         assertFalse(frame.data.jsonObject["is_banned"]!!.jsonPrimitive.boolean)
+    }
+
+    @Test
+    fun `handle does not add banned player to session`() = runTest {
+        transaction {
+            PlayersTable.insert {
+                it[steamid] = "STEAM_0:0:99"
+                it[lastNickname] = "Banned"
+                it[isBanned] = true
+            }
+        }
+        val (session, sent) = mockSession()
+
+        handler.handle(session, envelope(PlayerJoinPayload("STEAM_0:0:99", "Banned")))
+
+        assertTrue(session.players().isEmpty())
+        assertTrue(sent().single().data.jsonObject["is_banned"]!!.jsonPrimitive.boolean)
     }
 }
