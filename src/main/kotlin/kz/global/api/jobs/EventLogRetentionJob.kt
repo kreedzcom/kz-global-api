@@ -31,7 +31,7 @@ class EventLogRetentionJob(
         }
     }
 
-    private suspend fun purgeOldEvents() {
+    internal suspend fun purgeOldEvents() {
         val cutoff = Clock.System.now().minus(config.eventLogRetentionDays.days)
         val deleted = suspendTransaction {
             EventLogTable.deleteWhere { EventLogTable.createdAt less cutoff }
