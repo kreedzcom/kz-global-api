@@ -5,11 +5,14 @@ import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
 import kz.global.api.config.AppConfig
 import kz.global.api.db.DatabaseFactory
 import kz.global.api.domain.broadcast.BroadcastService
+import kz.global.api.domain.players.PlayerBanService
 import kz.global.api.domain.records.RecordService
 import kz.global.api.domain.replays.ReplayService
 import kz.global.api.events.AuditLogger
 import kz.global.api.events.KzEventBus
+import kz.global.api.jobs.EventLogRetentionJob
 import kz.global.api.metrics.KzMetrics
+import kz.global.api.security.WsRateLimiters
 import kz.global.api.storage.R2Client
 import kz.global.api.ws.ConnectedServersRegistry
 import kotlinx.coroutines.CoroutineScope
@@ -20,6 +23,7 @@ import org.koin.dsl.module
 
 fun appModule(config: AppConfig, prometheusRegistry: PrometheusMeterRegistry) = module {
     single { config }
+    single { config.security }
     single { prometheusRegistry }
     single<MeterRegistry> { get<PrometheusMeterRegistry>() }
     single { DatabaseFactory(config.database) }
@@ -27,11 +31,16 @@ fun appModule(config: AppConfig, prometheusRegistry: PrometheusMeterRegistry) = 
     single { KzEventBus() }
     single { AuditLogger() }
     single { ConnectedServersRegistry() }
+    single { WsRateLimiters(config.security) }
+    single { PlayerBanService() }
     single(named("applicationCoroutineScope")) {
         CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
     single { KzMetrics(get(), get()) }
-    single { RecordService(get(), get(), get()) }
-    single { ReplayService(get(), get()) }
+    single { RecordService(get(), get(), get(), get(), get()) }
+    single { ReplayService(get(), get(), get()) }
     single { BroadcastService(get(), get(), Dispatchers.IO, get(named("applicationCoroutineScope"))) }
+    single {
+        EventLogRetentionJob(get(named("applicationCoroutineScope")), config.security).also { it.start() }
+    }
 }
