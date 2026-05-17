@@ -9,6 +9,7 @@ fun testSecurityConfig(
     maxWrImprovementRatio: Double? = null,
     addRecordPerServerPerMinute: Int = 1000,
     readQueryPerServerPerSecond: Int = 1000,
+    replayBytesPerServerPerSecond: Long = 52_428_800L,
     eventLogRetentionDays: Long = 90,
 ) = SecurityConfig(
     metricsBearerKey = "test-metrics-key",
@@ -19,7 +20,7 @@ fun testSecurityConfig(
     requireReplayForLeaderboard = requireReplayForLeaderboard,
     wsUpgradePerIpPerMinute = 1000,
     addRecordPerServerPerMinute = addRecordPerServerPerMinute,
-    replayBytesPerServerPerSecond = 52_428_800L,
+    replayBytesPerServerPerSecond = replayBytesPerServerPerSecond,
     readQueryPerServerPerSecond = readQueryPerServerPerSecond,
     wantPlayerRecordsDefaultLimit = 50,
     wantPlayerRecordsMaxLimit = 100,
@@ -31,4 +32,8 @@ fun testWsRateLimiters() = kz.global.api.security.WsRateLimiters(testSecurityCon
 
 fun testWsRateLimitersStrict() = kz.global.api.security.WsRateLimiters(
     testSecurityConfig(addRecordPerServerPerMinute = 1, readQueryPerServerPerSecond = 1),
+)
+
+fun testWsRateLimitersStrictReplayBytes() = kz.global.api.security.WsRateLimiters(
+    testSecurityConfig(replayBytesPerServerPerSecond = 100),
 )
