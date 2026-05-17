@@ -81,6 +81,7 @@ data class WantCourseTopPayload(
 data class WantPlayerRecordsPayload(
     val steamid: String,
     @SerialName("map_name") val mapName: String,
+    val limit: Int = 50,
 )
 
 @Serializable
