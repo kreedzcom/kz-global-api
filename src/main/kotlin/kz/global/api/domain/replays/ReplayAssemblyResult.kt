@@ -19,5 +19,9 @@ sealed class ReplayAssemblyResult {
         data object BadZstdMagic : Rejected()
 
         data object InvalidChunk : Rejected()
+
+        data object TooLarge : Rejected()
+
+        data object TooManyConcurrent : Rejected()
     }
 }
