@@ -1,6 +1,8 @@
 package kz.global.api.domain.records
 
+import kz.global.api.config.SecurityConfig
 import kz.global.api.db.tables.*
+import kz.global.api.domain.players.PlayerBanService
 import kz.global.api.events.AuditLogger
 import kz.global.api.events.KzEvent
 import kz.global.api.events.KzEventBus
@@ -37,6 +39,8 @@ class RecordService(
     private val eventBus: KzEventBus,
     private val auditLogger: AuditLogger,
     private val metrics: KzMetrics,
+    private val playerBanService: PlayerBanService,
+    private val security: SecurityConfig,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val log = LoggerFactory.getLogger(RecordService::class.java)
@@ -46,13 +50,93 @@ class RecordService(
         pluginVersionId: Int,
         payload: AddRecordPayload,
     ): RecordResult {
+        if (playerBanService.isBanned(payload.steamid)) {
+            return RecordResult.Rejected("Player is banned")
+        }
+
+        val wrRejection = checkWrImprovementRatio(payload)
+        if (wrRejection != null) {
+            return RecordResult.Rejected(wrRejection)
+        }
+
         val txResult = persistRecord(serverId, pluginVersionId, payload)
 
         if (txResult is LeaderboardResult) {
             emitEvents(txResult, payload, serverId)
             return RecordResult.Accepted(txResult.recordId, txResult.isPb)
         }
+        if (txResult is RecordResult.Accepted) {
+            return txResult
+        }
         return txResult as RecordResult
+    }
+
+    suspend fun finalizePendingLeaderboard(localUid: String): Boolean = withContext(ioDispatcher) {
+        val finalized = suspendTransaction {
+            val row = MapRecordsTable
+                .selectAll()
+                .where { MapRecordsTable.localUid eq localUid }
+                .singleOrNull()
+                ?: return@suspendTransaction null
+
+            if (!row[MapRecordsTable.leaderboardPending]) return@suspendTransaction null
+
+            val recordId = row[MapRecordsTable.id]
+            val steamid = row[MapRecordsTable.playerSteamid]
+            val mapName = row[MapRecordsTable.mapName]
+            val timeMs = row[MapRecordsTable.timeMs]
+            val gochecks = row[MapRecordsTable.gochecks]
+            val serverId = row[MapRecordsTable.serverId]
+            val checkpoints = row[MapRecordsTable.checkpoints]
+
+            val (isPb, isWrNub, isWrPro) = applyLeaderboardUpdates(steamid, mapName, recordId, timeMs, gochecks)
+
+            MapRecordsTable.update({ MapRecordsTable.id eq recordId }) {
+                it[leaderboardPending] = false
+            }
+
+            if (isWrNub || isWrPro) metrics.worldRecords.increment()
+
+            Triple(
+                LeaderboardResult(recordId, isPb, isWrNub, isWrPro),
+                AddRecordPayload(steamid, mapName, timeMs, localUid, checkpoints, gochecks),
+                serverId,
+            )
+        } ?: return@withContext false
+
+        emitEvents(finalized.first, finalized.second, finalized.third)
+        true
+    }
+
+    private suspend fun checkWrImprovementRatio(payload: AddRecordPayload): String? {
+        val ratio = security.maxWrImprovementRatio ?: return null
+        if (ratio <= 0.0 || ratio >= 1.0) return null
+
+        val category = if (payload.gochecks == 0) "pro" else "nub"
+        val existingWrTime = withContext(ioDispatcher) {
+            suspendTransaction {
+                val wr = WorldRecordsTable
+                    .selectAll()
+                    .where {
+                        (WorldRecordsTable.mapName eq payload.mapName) and
+                            (WorldRecordsTable.category eq category)
+                    }
+                    .singleOrNull()
+                    ?: return@suspendTransaction null
+
+                MapRecordsTable
+                    .selectAll()
+                    .where { MapRecordsTable.id eq wr[WorldRecordsTable.recordId] }
+                    .singleOrNull()
+                    ?.get(MapRecordsTable.timeMs)
+            }
+        } ?: return null
+
+        val minAllowed = (existingWrTime * (1.0 - ratio)).toLong()
+        if (payload.timeMs < minAllowed) {
+            return "Time improves WR by more than allowed ratio"
+        }
+        return null
     }
 
     private suspend fun persistRecord(
@@ -92,6 +176,8 @@ class RecordService(
                 }
 
                 val recordId = uuidV7()
+                val deferLeaderboard = security.requireReplayForLeaderboard
+
                 MapRecordsTable.insert {
                     it[id] = recordId
                     it[MapRecordsTable.serverId] = serverId
@@ -102,17 +188,28 @@ class RecordService(
                     it[gochecks] = payload.gochecks
                     it[localUid] = payload.localUid
                     it[MapRecordsTable.pluginVersionId] = pluginVersionId
+                    it[leaderboardPending] = deferLeaderboard
                 }
 
-                val (isPb, isWrNub, isWrPro) = if (payload.gochecks == 0) {
-                    val isPbPro = updateBestPro(payload.steamid, payload.mapName, recordId, payload.timeMs)
-                    val isWrPro = isPbPro && updateWorldRecord(payload.mapName, "pro", recordId, payload.timeMs)
-                    Triple(isPbPro, false, isWrPro)
-                } else {
-                    val isPbNub = updateBestNub(payload.steamid, payload.mapName, recordId, payload.timeMs)
-                    val isWrNub = isPbNub && updateWorldRecord(payload.mapName, "nub", recordId, payload.timeMs)
-                    Triple(isPbNub, isWrNub, false)
+                if (deferLeaderboard) {
+                    log.info(
+                        "Accepted (leaderboard pending replay): {} record={} map={} time={}ms",
+                        payload.steamid,
+                        recordId,
+                        payload.mapName,
+                        payload.timeMs,
+                    )
+                    metrics.recordsSubmitted.increment()
+                    return@suspendTransaction RecordResult.Accepted(recordId, isPb = false)
                 }
+
+                val (isPb, isWrNub, isWrPro) = applyLeaderboardUpdates(
+                    payload.steamid,
+                    payload.mapName,
+                    recordId,
+                    payload.timeMs,
+                    payload.gochecks,
+                )
 
                 log.info(
                     "Accepted: {} record={} map={} time={}ms checkpoints={} gochecks={}",
@@ -139,6 +236,23 @@ class RecordService(
             RecordResult.Duplicate(dupId)
         }
     }
+
+    private fun applyLeaderboardUpdates(
+        steamid: String,
+        mapName: String,
+        recordId: Uuid,
+        timeMs: Long,
+        gochecks: Int,
+    ): Triple<Boolean, Boolean, Boolean> =
+        if (gochecks == 0) {
+            val isPbPro = updateBestPro(steamid, mapName, recordId, timeMs)
+            val isWrPro = isPbPro && updateWorldRecord(mapName, "pro", recordId, timeMs)
+            Triple(isPbPro, false, isWrPro)
+        } else {
+            val isPbNub = updateBestNub(steamid, mapName, recordId, timeMs)
+            val isWrNub = isPbNub && updateWorldRecord(mapName, "nub", recordId, timeMs)
+            Triple(isPbNub, isWrNub, false)
+        }
 
     private fun isUniqueConstraintViolation(t: Throwable): Boolean {
         var x: Throwable? = t
@@ -240,7 +354,6 @@ class RecordService(
         return false
     }
 
-    @Suppress("unused")
     private suspend fun emitEvents(result: LeaderboardResult, payload: AddRecordPayload, serverId: Int) {
         eventBus.emit(
             KzEvent.NewRecord(
