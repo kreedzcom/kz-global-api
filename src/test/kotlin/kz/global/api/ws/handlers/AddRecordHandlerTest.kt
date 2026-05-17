@@ -7,7 +7,10 @@ import kz.global.api.domain.records.RecordService
 import kz.global.api.events.AuditLogger
 import kz.global.api.events.KzEventBus
 import kz.global.api.metrics.KzMetrics
+import kz.global.api.domain.players.PlayerBanService
 import kz.global.api.support.TestDatabase
+import kz.global.api.support.testSecurityConfig
+import kz.global.api.support.testWsRateLimiters
 import kz.global.api.support.mockSession
 import kz.global.api.ws.*
 import kotlinx.coroutines.test.runTest
@@ -28,8 +31,10 @@ class AddRecordHandlerTest {
         eventBus = KzEventBus(),
         auditLogger = mockk(relaxed = true),
         metrics = KzMetrics(SimpleMeterRegistry(), ConnectedServersRegistry()),
+        playerBanService = PlayerBanService(),
+        security = testSecurityConfig(),
     )
-    private val handler = AddRecordHandler(recordService)
+    private val handler = AddRecordHandler(recordService, testWsRateLimiters())
 
     private var serverId = 0
     private var pluginVersionId = 0

@@ -6,6 +6,7 @@ import kz.global.api.db.tables.*
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.storage.R2Client
 import kz.global.api.support.TestDatabase
+import kz.global.api.support.testSecurityConfig
 import kz.global.api.util.uuidV7
 import kz.global.api.ws.ConnectedServersRegistry
 import kotlinx.coroutines.test.runTest
@@ -73,6 +74,7 @@ class ReplayServiceDbTest {
         service = ReplayService(
             r2Client = r2,
             metrics = KzMetrics(SimpleMeterRegistry(), ConnectedServersRegistry()),
+            security = testSecurityConfig(),
         )
 
         transaction {

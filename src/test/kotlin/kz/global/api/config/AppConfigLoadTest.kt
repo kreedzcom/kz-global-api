@@ -22,6 +22,7 @@ class AppConfigLoadTest {
                 put("r2.secretAccessKey", "s")
                 put("r2.bucket", "b")
                 put("admin.bearerKey", "admin-key")
+                put("security.metricsBearerKey", "metrics-key")
             }
         }
 
@@ -29,6 +30,7 @@ class AppConfigLoadTest {
             val c = loadAppConfig()
 
             assertEquals(10, c.database.maximumPoolSize)
+            assertEquals("metrics-key", c.security.metricsBearerKey)
         }
     }
 
@@ -45,6 +47,7 @@ class AppConfigLoadTest {
                 put("r2.secretAccessKey", "s")
                 put("r2.bucket", "b")
                 put("admin.bearerKey", "admin-key")
+                put("security.metricsBearerKey", "metrics-key")
             }
         }
 
