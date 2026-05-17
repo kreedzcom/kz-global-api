@@ -11,6 +11,7 @@ object PlayersTable : Table("player") {
     val ipAddress = varchar("ip_address", 45).nullable()
     val firstSeenAt = timestamp("first_seen_at").defaultExpression(CurrentTimestamp)
     val lastSeenAt = timestamp("last_seen_at").defaultExpression(CurrentTimestamp)
+    val isBanned = bool("is_banned").default(false)
 
     override val primaryKey = PrimaryKey(steamid)
 

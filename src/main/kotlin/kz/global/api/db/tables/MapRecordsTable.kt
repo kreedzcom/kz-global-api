@@ -17,6 +17,7 @@ object MapRecordsTable : Table("map_record") {
     val replayR2Key = varchar("replay_r2_key", 255).nullable()
     val flagged = bool("flagged").default(false)
     val reviewed = bool("reviewed").default(false)
+    val leaderboardPending = bool("leaderboard_pending").default(false)
     val pluginVersionId = integer("plugin_version_id").references(PluginVersionsTable.id)
     val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
 

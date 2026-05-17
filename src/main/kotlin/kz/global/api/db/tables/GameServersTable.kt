@@ -10,6 +10,7 @@ object GameServersTable : Table("game_server") {
     val accessKey = binary("access_key", 16).uniqueIndex()
     val active = bool("active").default(true)
     val lastConnectedAt = timestamp("last_connected_at").nullable()
+    val allowedIps = varchar("allowed_ips", 1024).nullable()
     val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
 
     override val primaryKey = PrimaryKey(id)
