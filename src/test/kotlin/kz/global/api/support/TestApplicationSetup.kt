@@ -14,8 +14,10 @@ import kz.global.api.api.*
 import kz.global.api.auth.configureAdminAuth
 import kz.global.api.config.AdminConfig
 import kz.global.api.domain.broadcast.BroadcastService
+import kz.global.api.domain.players.PlayerBanService
 import kz.global.api.domain.records.RecordService
 import kz.global.api.domain.replays.ReplayService
+import kz.global.api.support.testSecurityConfig
 import kz.global.api.events.AuditLogger
 import kz.global.api.events.KzEventBus
 import kz.global.api.metrics.KzMetrics
@@ -61,8 +63,10 @@ fun ApplicationTestBuilder.setupAdminRoutes(
                 single { KzEventBus() }
                 single { AuditLogger() }
                 single<R2Client> { r2Binding }
-                single { RecordService(get(), get(), get()) }
-                single { ReplayService(get(), get()) }
+                single { testSecurityConfig() }
+                single { PlayerBanService() }
+                single { RecordService(get(), get(), get(), get(), get()) }
+                single { ReplayService(get(), get(), get()) }
                 single<BroadcastService> { mockk(relaxed = true) }
             })
         }
