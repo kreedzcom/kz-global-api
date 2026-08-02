@@ -128,6 +128,15 @@ class GameServerSessionTest {
         assertEquals("bad input", data["message"]!!.jsonPrimitive.content)
     }
 
+    @Test
+    fun `sendError echoes the provided msgId`() = runTest {
+        val (session, sent) = capturedSession()
+
+        session.sendError(5058L, "Invalid message format")
+
+        assertEquals(5058L, sent().single().msgId)
+    }
+
     // ─── currentMap ──────────────────────────────────────────────────────────
 
     @Test

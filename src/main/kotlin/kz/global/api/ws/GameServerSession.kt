@@ -42,7 +42,7 @@ class GameServerSession(
         socket.send(Frame.Text(wsEncodeJson.encodeToString(envelope)))
     }
 
-    suspend fun sendError(msgId: Long = 0, message: String) {
+    suspend fun sendError(msgId: Long, message: String) {
         sendJson(MsgType.ERROR, msgId, ErrorPayload(message))
     }
 }

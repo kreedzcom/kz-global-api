@@ -278,6 +278,8 @@ When a world record changes, the API pushes **`MAP_INFO` (`msg_type` 102)** with
 { "message": "human-readable description" }
 ```
 
+The API echoes the inbound `msg_id` on the ERROR envelope whenever it could be read from the request (including malformed payloads where the outer envelope parsed but inner `data` did not). The plugin uses this to delete the message from local storage and stop retrying.
+
 ---
 
 ## Replay chunk upload (binary frames)

@@ -29,11 +29,11 @@ class AddRecordHandler(
             return
         }
 
-        if (payload.checkpoints < 0 || payload.checkpoints > 65_535) {
+        if (payload.checkpoints !in 0..65_535) {
             session.sendError(envelope.msgId, "Invalid checkpoints")
             return
         }
-        if (payload.gochecks < 0 || payload.gochecks > 65_535) {
+        if (payload.gochecks !in 0..65_535) {
             session.sendError(envelope.msgId, "Invalid gochecks")
             return
         }

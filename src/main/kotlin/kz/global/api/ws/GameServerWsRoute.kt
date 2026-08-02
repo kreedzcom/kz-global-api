@@ -15,6 +15,10 @@ import org.slf4j.LoggerFactory
 
 private val log = LoggerFactory.getLogger("GameServerWsRoute")
 private val json = Json { ignoreUnknownKeys = true }
+private val msgIdFallbackRegex = """"msg_id"\s*:\s*(\d+)""".toRegex()
+
+private fun extractMsgIdFallback(text: String) =
+    msgIdFallbackRegex.find(text)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
 
 fun Routing.gameServerWsRoute() {
     val registry by inject<ConnectedServersRegistry>()
@@ -63,8 +67,15 @@ fun Routing.gameServerWsRoute() {
                 when (frame) {
                     is Frame.Text -> {
                         val text = frame.readText()
+                        val envelope = runCatching { json.decodeFromString<WsEnvelope>(text) }.getOrNull()
+
+                        if (envelope == null) {
+                            log.warn("Server {}: failed to parse envelope: {}", serverId, text.take(200))
+                            session.sendError(extractMsgIdFallback(text), "Invalid message format")
+                            return@consumeEach
+                        }
+
                         runCatching {
-                            val envelope = json.decodeFromString<WsEnvelope>(text)
                             when (envelope.msgType) {
                                 MsgType.HELLO -> helloHandler.handle(session, envelope)
                                 MsgType.MAP_CHANGE -> mapChangeHandler.handle(session, envelope)
@@ -78,7 +89,7 @@ fun Routing.gameServerWsRoute() {
                             }
                         }.onFailure { e ->
                             log.warn("Server {}: failed to handle message: {}", serverId, e.message)
-                            session.sendError(message = "Invalid message format")
+                            session.sendError(envelope.msgId, "Invalid message format")
                         }
                     }
                     is Frame.Binary -> {

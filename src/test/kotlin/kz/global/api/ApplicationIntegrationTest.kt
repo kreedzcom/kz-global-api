@@ -20,6 +20,8 @@ import kz.global.api.ws.MsgType
 import kz.global.api.ws.WsEnvelope
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.junit.jupiter.api.BeforeAll
@@ -134,6 +136,75 @@ class ApplicationIntegrationTest {
             val frame = incoming.receive() as Frame.Text
             val text = frame.readText()
             assertContains(text, "\"msg_type\":101")
+        }
+    }
+
+    @Test
+    fun `game websocket echoes msg_id on malformed ADD_RECORD payload`() = testApplication {
+        environment {
+            config = mapApplicationConfigForTests()
+        }
+        application {
+            module()
+        }
+
+        val checksum = ByteArray(16) { it.toByte() }
+        val checksumHex = checksum.toHex()
+        val accessKey = ByteArray(16) { (it + 5).toByte() }
+        val tokenHex = accessKey.toHex()
+
+        transaction {
+            PluginVersionsTable.insert {
+                it[semver] = "1.0.0"
+                it[checksumLinux] = checksum
+                it[checksumWindows] = checksum
+                it[isCutoff] = false
+            }
+            val keyBytes = accessKey
+            GameServersTable.insert {
+                it[name] = "ws-add-record-server"
+                it[GameServersTable.accessKey] = keyBytes
+            }
+        }
+
+        val json = Json { ignoreUnknownKeys = true }
+        val helloEnvelope = WsEnvelope(
+            msgType = MsgType.HELLO,
+            msgId = 1L,
+            data = json.encodeToJsonElement(
+                HelloPayload(
+                    pluginVersion = "1.0.0",
+                    pluginChecksum = checksumHex,
+                    mapName = "bkz_goldbhop",
+                ),
+            ),
+        )
+        val malformedAddRecord =
+            """{"msg_type":8,"msg_id":5058,"data":{"steamid":"STEAM_0:0:43480797","time_ms":84191,"checkpoints":0,"gochecks":0,"local_uid":"00084191_0043480797_ba9dm67cl5y1"}}"""
+
+        val client = createClient {
+            install(WebSockets)
+        }
+
+        client.ws(
+            path = "/ws/game",
+            request = {
+                header(HttpHeaders.Authorization, "Bearer $tokenHex")
+            },
+        ) {
+            send(Frame.Text(json.encodeToString(WsEnvelope.serializer(), helloEnvelope)))
+            incoming.receive() // HELLO_ACK
+
+            send(Frame.Text(malformedAddRecord))
+            val frame = incoming.receive() as Frame.Text
+            val response = json.decodeFromString<WsEnvelope>(frame.readText())
+
+            assertEquals(MsgType.ERROR, response.msgType)
+            assertEquals(5058L, response.msgId)
+            assertEquals(
+                "Invalid message format",
+                response.data.jsonObject["message"]!!.jsonPrimitive.content,
+            )
         }
     }
 
