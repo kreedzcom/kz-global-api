@@ -4,10 +4,13 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.server.testing.*
+import io.ktor.websocket.DefaultWebSocketSession
+import io.mockk.mockk
 import kz.global.api.db.tables.GameServersTable
 import kz.global.api.support.TestDatabase
 import kz.global.api.support.adminAuth
 import kz.global.api.support.setupAdminRoutes
+import kz.global.api.ws.GameServerSession
 import kotlinx.serialization.json.*
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.insert
@@ -253,5 +256,23 @@ class ServersRouteTest {
 
         assertEquals(HttpStatusCode.OK, response.status)
         assertEquals(0, Json.parseToJsonElement(response.bodyAsText()).jsonArray.size)
+    }
+
+    @Test
+    fun `GET connected serializes active sessions`() = testApplication {
+        setupAdminRoutes(configureRegistry = {
+            val socket = mockk<DefaultWebSocketSession>(relaxed = true)
+            register(GameServerSession(3, socket).also { it.currentMap = "bkz_goldbhop" })
+        })
+
+        val response = client.get("/admin/servers/connected") {
+            header(HttpHeaders.Authorization, adminAuth())
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        val sessions = Json.parseToJsonElement(response.bodyAsText()).jsonArray
+        assertEquals(1, sessions.size)
+        assertEquals(3, sessions[0].jsonObject["server_id"]!!.jsonPrimitive.int)
+        assertEquals("bkz_goldbhop", sessions[0].jsonObject["current_map"]!!.jsonPrimitive.content)
     }
 }

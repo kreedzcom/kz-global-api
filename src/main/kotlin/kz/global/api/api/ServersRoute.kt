@@ -34,6 +34,12 @@ data class CreateServerResponse(val id: Int, val name: String, val accessKey: St
 @Serializable
 data class ServerListEntry(val id: Int, val name: String, val active: Boolean, val lastConnectedAt: String?)
 
+@Serializable
+data class ConnectedServerEntry(
+    @SerialName("server_id") val serverId: Int,
+    @SerialName("current_map") val currentMap: String?,
+)
+
 fun Route.serversRoute() {
     val registry by inject<ConnectedServersRegistry>()
 
@@ -54,8 +60,11 @@ fun Route.serversRoute() {
             }
 
             get("/connected") {
-                val connected = registry.allSessions().map { s ->
-                    mapOf("server_id" to s.serverId, "current_map" to s.currentMap)
+                val connected = registry.allSessions().map { session ->
+                    ConnectedServerEntry(
+                        serverId = session.serverId,
+                        currentMap = session.currentMap.ifBlank { null },
+                    )
                 }
                 call.respond(connected)
             }

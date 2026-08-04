@@ -38,6 +38,7 @@ const val TEST_ADMIN_KEY = "test-admin-bearer-key"
 fun ApplicationTestBuilder.setupAdminRoutes(
     adminKey: String = TEST_ADMIN_KEY,
     r2Client: R2Client = mockk(relaxed = true),
+    configureRegistry: ConnectedServersRegistry.() -> Unit = {},
 ) {
     val r2Binding = r2Client
     application {
@@ -57,7 +58,7 @@ fun ApplicationTestBuilder.setupAdminRoutes(
 
         install(Koin) {
             modules(module {
-                single { ConnectedServersRegistry() }
+                single { ConnectedServersRegistry().also(configureRegistry) }
                 single { meterRegistry as io.micrometer.core.instrument.MeterRegistry }
                 single { KzMetrics(get(), get()) }
                 single { KzEventBus() }
@@ -77,6 +78,7 @@ fun ApplicationTestBuilder.setupAdminRoutes(
             recordsRoute()
             mapTimesRoute()
             playersRoute()
+            mapsReplayRoute()
         }
     }
 }
