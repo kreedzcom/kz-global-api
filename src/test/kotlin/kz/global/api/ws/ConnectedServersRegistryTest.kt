@@ -13,6 +13,17 @@ class ConnectedServersRegistryTest {
     }
 
     @Test
+    fun `beginDrain marks registry as draining`() {
+        val registry = ConnectedServersRegistry()
+
+        assertFalse(registry.isDraining())
+
+        registry.beginDrain()
+
+        assertTrue(registry.isDraining())
+    }
+
+    @Test
     fun `empty registry has zero connected count`() {
         val registry = ConnectedServersRegistry()
 

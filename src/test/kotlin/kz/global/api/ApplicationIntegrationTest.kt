@@ -60,6 +60,20 @@ class ApplicationIntegrationTest {
     }
 
     @Test
+    fun `module exposes ready when database is connected`() = testApplication {
+        environment {
+            config = mapApplicationConfigForTests()
+        }
+        application {
+            module()
+        }
+
+        val response = client.get("/ready")
+
+        assertEquals(HttpStatusCode.OK, response.status)
+    }
+
+    @Test
     fun `module exposes prometheus metrics`() = testApplication {
         environment {
             config = mapApplicationConfigForTests()

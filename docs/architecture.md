@@ -259,6 +259,15 @@ Replays are uploaded as a sequence of binary WebSocket frames, each containing a
 
 ## Observability
 
+### Health probes
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /health` | Liveness — returns 200 while the JVM process is running |
+| `GET /ready` | Readiness — returns 200 when Postgres is reachable and the instance is not draining; 503 otherwise |
+
+Traefik, Docker healthchecks, and the production deploy script use `/ready`. On shutdown the instance enters drain mode (`/ready` → 503), waits for Traefik to stop routing new traffic, then closes WebSocket sessions with `GOING_AWAY`.
+
 ### Metrics (`/metrics`)
 
 Prometheus scrape endpoint. When `METRICS_BEARER_KEY` is set, requests must include `Authorization: Bearer <key>`. In production, only Prometheus on the internal Docker network should reach this path.

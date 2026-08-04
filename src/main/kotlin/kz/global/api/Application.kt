@@ -15,6 +15,7 @@ import io.micrometer.prometheusmetrics.PrometheusConfig
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kz.global.api.api.*
 import kz.global.api.auth.configureAdminAuth
@@ -76,14 +77,30 @@ fun Application.module() {
 
     val registry by inject<ConnectedServersRegistry>()
     monitor.subscribe(ApplicationStopPreparing) {
-        log.info("Shutting down — closing all WebSocket sessions...")
-        runBlocking { registry.closeAll() }
+        log.info("Shutdown initiated — draining new traffic...")
+        registry.beginDrain()
+        runBlocking {
+            delay(6.seconds)
+            log.info("Closing WebSocket sessions...")
+            registry.closeAll()
+        }
         runCatching { getKoin().get<CoroutineScope>(named("applicationCoroutineScope")).cancel() }
             .onFailure { e -> log.warn("Failed to cancel application scope: {}", e.message) }
+        if (!config.database.url.startsWith("jdbc:h2:")) {
+            runCatching { db.close() }
+                .onFailure { e -> log.warn("Failed to close database pool: {}", e.message) }
+        }
     }
 
     routing {
         get("/health") {
+            call.respond(HttpStatusCode.OK)
+        }
+        get("/ready") {
+            if (registry.isDraining() || !db.ping()) {
+                call.respond(HttpStatusCode.ServiceUnavailable)
+                return@get
+            }
             call.respond(HttpStatusCode.OK)
         }
         get("/metrics") {

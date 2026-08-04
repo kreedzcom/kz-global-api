@@ -9,6 +9,17 @@ class ConnectedServersRegistry {
     private val log = LoggerFactory.getLogger(ConnectedServersRegistry::class.java)
     private val sessions = ConcurrentHashMap<Int, GameServerSession>()
 
+    @Volatile
+    private var draining = false
+
+    fun isDraining(): Boolean = draining
+
+    /** Stops accepting new WebSocket sessions; existing sessions stay open until closed. */
+    fun beginDrain() {
+        draining = true
+        log.info("Drain mode enabled — rejecting new WebSocket connections")
+    }
+
     fun register(session: GameServerSession) {
         sessions[session.serverId] = session
         log.info("Server {} connected. Total: {}", session.serverId, sessions.size)

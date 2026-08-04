@@ -59,6 +59,11 @@ fun Routing.gameServerWsRoute() {
             return@webSocket
         }
 
+        if (registry.isDraining()) {
+            close(CloseReason(CloseReason.Codes.GOING_AWAY, "Server draining"))
+            return@webSocket
+        }
+
         val session = GameServerSession(serverId, this)
         registry.register(session)
 

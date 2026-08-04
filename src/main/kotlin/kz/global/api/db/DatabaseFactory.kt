@@ -10,13 +10,26 @@ import org.slf4j.LoggerFactory
 class DatabaseFactory(private val config: DatabaseConfig) {
 
     private val log = LoggerFactory.getLogger(DatabaseFactory::class.java)
+    private var dataSource: HikariDataSource? = null
 
     fun connect() {
         log.info("Connecting to database...")
-        val dataSource = buildDataSource()
-        runMigrations(dataSource)
-        Database.connect(dataSource)
+        val ds = buildDataSource()
+        runMigrations(ds)
+        Database.connect(ds)
+        dataSource = ds
         log.info("Database connected.")
+    }
+
+    fun ping(): Boolean =
+        runCatching {
+            dataSource?.connection?.use { it.isValid(2) } ?: false
+        }.getOrDefault(false)
+
+    fun close() {
+        dataSource?.close()
+        dataSource = null
+        log.info("Database pool closed.")
     }
 
     private fun buildDataSource(): HikariDataSource {
