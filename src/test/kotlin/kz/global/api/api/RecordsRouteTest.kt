@@ -114,7 +114,9 @@ class RecordsRouteTest {
         }
 
         assertEquals(HttpStatusCode.OK, response.status)
-        assertEquals(0, Json.parseToJsonElement(response.bodyAsText()).jsonArray.size)
+        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+        assertEquals(0, body["items"]!!.jsonArray.size)
+        assertEquals(0, body["total_count"]!!.jsonPrimitive.long)
     }
 
     @Test
@@ -128,7 +130,7 @@ class RecordsRouteTest {
         }
 
         assertEquals(HttpStatusCode.OK, response.status)
-        assertEquals(2, Json.parseToJsonElement(response.bodyAsText()).jsonArray.size)
+        assertEquals(2, Json.parseToJsonElement(response.bodyAsText()).jsonObject["items"]!!.jsonArray.size)
     }
 
     @Test
@@ -142,7 +144,7 @@ class RecordsRouteTest {
         }
 
         assertEquals(HttpStatusCode.OK, response.status)
-        val body = Json.parseToJsonElement(response.bodyAsText()).jsonArray
+        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject["items"]!!.jsonArray
         assertEquals(1, body.size)
         assertTrue(body[0].jsonObject["flagged"]!!.jsonPrimitive.boolean)
     }
@@ -158,9 +160,88 @@ class RecordsRouteTest {
         }
 
         assertEquals(HttpStatusCode.OK, response.status)
-        val body = Json.parseToJsonElement(response.bodyAsText()).jsonArray
+        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject["items"]!!.jsonArray
         assertEquals(1, body.size)
         assertEquals("kz_canyon", body[0].jsonObject["map_name"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `GET records paginates results`() = testApplication {
+        setupAdminRoutes()
+        repeat(3) { insertRecord("kz_page_$it") }
+
+        val response = client.get("/admin/records?page=0&size=2") {
+            header(HttpHeaders.Authorization, adminAuth())
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+        assertEquals(2, body["items"]!!.jsonArray.size)
+        assertEquals(3, body["total_count"]!!.jsonPrimitive.long)
+        assertEquals(2, body["total_pages"]!!.jsonPrimitive.int)
+    }
+
+    @Test
+    fun `GET records with has_replay=true returns only records with replay`() = testApplication {
+        setupAdminRoutes()
+        val withReplay = insertRecord("kz_replay")
+        insertRecord("kz_no_replay")
+        transaction {
+            MapRecordsTable.update({ MapRecordsTable.id eq withReplay }) {
+                it[MapRecordsTable.replayR2Key] = "replays/$withReplay.krpz"
+            }
+        }
+
+        val response = client.get("/admin/records?has_replay=true") {
+            header(HttpHeaders.Authorization, adminAuth())
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject["items"]!!.jsonArray
+        assertEquals(1, body.size)
+        assertTrue(body[0].jsonObject["has_replay"]!!.jsonPrimitive.boolean)
+    }
+
+    @Test
+    fun `GET records search matches player nickname`() = testApplication {
+        setupAdminRoutes()
+        insertRecord("kz_search")
+
+        val response = client.get("/admin/records?search=RouteTest") {
+            header(HttpHeaders.Authorization, adminAuth())
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertEquals(1, Json.parseToJsonElement(response.bodyAsText()).jsonObject["items"]!!.jsonArray.size)
+    }
+
+    @Test
+    fun `GET records search matches time_ms`() = testApplication {
+        setupAdminRoutes()
+        insertRecord("kz_time", timeMs = 84_191L)
+
+        val response = client.get("/admin/records?search=84191") {
+            header(HttpHeaders.Authorization, adminAuth())
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        val items = Json.parseToJsonElement(response.bodyAsText()).jsonObject["items"]!!.jsonArray
+        assertEquals(1, items.size)
+        assertEquals(84_191L, items[0].jsonObject["time_ms"]!!.jsonPrimitive.long)
+    }
+
+    @Test
+    fun `GET records includes player nickname`() = testApplication {
+        setupAdminRoutes()
+        insertRecord("kz_nick")
+
+        val response = client.get("/admin/records") {
+            header(HttpHeaders.Authorization, adminAuth())
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        val item = Json.parseToJsonElement(response.bodyAsText()).jsonObject["items"]!!.jsonArray.single()
+        assertEquals("RouteTestPlayer", item.jsonObject["player_nickname"]!!.jsonPrimitive.content)
     }
 
     // ─── PATCH /admin/records/{id} ────────────────────────────────────────────

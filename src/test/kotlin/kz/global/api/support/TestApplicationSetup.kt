@@ -15,6 +15,7 @@ import kz.global.api.auth.configureAdminAuth
 import kz.global.api.config.AdminConfig
 import kz.global.api.domain.broadcast.BroadcastService
 import kz.global.api.domain.players.PlayerBanService
+import kz.global.api.domain.records.RecordAdminService
 import kz.global.api.domain.records.RecordService
 import kz.global.api.domain.replays.ReplayService
 import kz.global.api.support.testSecurityConfig
@@ -68,6 +69,7 @@ fun ApplicationTestBuilder.setupAdminRoutes(
                 single { PlayerBanService() }
                 single { ReplayService(get(), get(), get()) }
                 single { RecordService(get(), get(), get(), get(), get(), get()) }
+                single { RecordAdminService() }
                 single<BroadcastService> { mockk(relaxed = true) }
             })
         }

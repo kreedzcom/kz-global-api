@@ -6,6 +6,8 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kz.global.api.db.tables.*
+import kz.global.api.domain.records.AdminRecordFilters
+import kz.global.api.domain.records.RecordAdminService
 import kz.global.api.security.WsPayloadValidator
 import kz.global.api.storage.R2Client
 import kotlinx.serialization.SerialName
@@ -20,13 +22,23 @@ import kotlin.uuid.Uuid
 data class RecordEntry(
     val id: String,
     @SerialName("player_steamid") val playerSteamid: String,
+    @SerialName("player_nickname") val playerNickname: String,
     @SerialName("map_name") val mapName: String,
     @SerialName("time_ms") val timeMs: Long,
     val checkpoints: Int,
     val gochecks: Int,
     val flagged: Boolean,
     val reviewed: Boolean,
+    @SerialName("has_replay") val hasReplay: Boolean,
     @SerialName("created_at") val createdAt: String,
+)
+
+@Serializable
+data class RecordsPageResponse(
+    val items: List<RecordEntry>,
+    val page: Int,
+    @SerialName("total_pages") val totalPages: Int,
+    @SerialName("total_count") val totalCount: Long,
 )
 
 @Serializable
@@ -40,30 +52,26 @@ fun Route.recordsRoute() {
     route("/admin/records") {
         authenticate("admin") {
             get {
-                val flaggedOnly = call.request.queryParameters["flagged"]?.toBooleanStrictOrNull()
-                val mapFilter = call.request.queryParameters["map"]
+                val params = call.request.queryParameters
+                val page = params["page"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+                val size = params["size"]?.toIntOrNull()?.coerceIn(1, 100) ?: 20
+                val search = params["search"]?.trim()?.takeIf { it.isNotEmpty() }
+                val hasReplay = params["has_replay"]?.toBooleanStrictOrNull()
+                val flaggedOnly = params["flagged"]?.toBooleanStrictOrNull()
+                val mapFilter = params["map"]?.trim()?.takeIf { it.isNotEmpty() }
 
-                val records = suspendTransaction() {
-                    MapRecordsTable.selectAll().apply {
-                        if (flaggedOnly == true) andWhere { MapRecordsTable.flagged eq true }
-                        if (mapFilter != null) andWhere { MapRecordsTable.mapName eq mapFilter }
-                    }.orderBy(MapRecordsTable.createdAt, SortOrder.DESC)
-                     .limit(100)
-                     .map { row ->
-                         RecordEntry(
-                             id = row[MapRecordsTable.id].toString(),
-                             playerSteamid = row[MapRecordsTable.playerSteamid],
-                             mapName = row[MapRecordsTable.mapName],
-                             timeMs = row[MapRecordsTable.timeMs],
-                             checkpoints = row[MapRecordsTable.checkpoints],
-                             gochecks = row[MapRecordsTable.gochecks],
-                             flagged = row[MapRecordsTable.flagged],
-                             reviewed = row[MapRecordsTable.reviewed],
-                             createdAt = row[MapRecordsTable.createdAt].toString(),
-                         )
-                     }
-                }
-                call.respond(records)
+                val service = call.getKoin().get<RecordAdminService>()
+                val result = service.list(
+                    AdminRecordFilters(
+                        page = page,
+                        size = size,
+                        search = search,
+                        hasReplay = hasReplay,
+                        flagged = if (flaggedOnly == true) true else null,
+                        map = mapFilter,
+                    ),
+                )
+                call.respond(result)
             }
 
             patch("/{id}") {
