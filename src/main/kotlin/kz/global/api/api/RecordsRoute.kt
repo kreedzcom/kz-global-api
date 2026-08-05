@@ -8,6 +8,7 @@ import io.ktor.server.routing.*
 import kz.global.api.db.tables.*
 import kz.global.api.domain.records.AdminRecordFilters
 import kz.global.api.domain.records.RecordAdminService
+import kz.global.api.domain.replays.ReplayService
 import kz.global.api.security.WsPayloadValidator
 import kz.global.api.storage.R2Client
 import kotlinx.serialization.SerialName
@@ -16,6 +17,7 @@ import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 import org.koin.ktor.ext.getKoin
+import org.koin.ktor.ext.inject
 import kotlin.uuid.Uuid
 
 @Serializable
@@ -49,6 +51,8 @@ data class PatchRecordRequest(
 )
 
 fun Route.recordsRoute() {
+    val replayService by inject<ReplayService>()
+
     route("/admin/records") {
         authenticate("admin") {
             get {
@@ -72,6 +76,20 @@ fun Route.recordsRoute() {
                     ),
                 )
                 call.respond(result)
+            }
+
+            get("/{id}/replay") {
+                val recordId = runCatching { Uuid.parse(call.parameters["id"]!!) }.getOrNull()
+                    ?: return@get call.respond(HttpStatusCode.BadRequest, "Invalid UUID")
+
+                val bytes = replayService.getReplayBytesByRecordId(recordId)
+                if (bytes == null) {
+                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "Replay not found"))
+                    return@get
+                }
+
+                call.response.header(HttpHeaders.ContentDisposition, "inline")
+                call.respondBytes(bytes, ContentType.Application.OctetStream)
             }
 
             patch("/{id}") {

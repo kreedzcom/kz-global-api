@@ -216,6 +216,35 @@ class ReplayServiceDbTest {
         assertEquals(listOf(r2Key), r2.getCalls)
     }
 
+    @Test
+    fun `getReplayBytesByRecordId returns null when record has no replay`() = runTest {
+        val recordId = insertRecord("kz_no_record_replay", "uid-no-record-replay")
+
+        val bytes = service.getReplayBytesByRecordId(recordId)
+
+        assertNull(bytes)
+        assertTrue(r2.getCalls.isEmpty())
+    }
+
+    @Test
+    fun `getReplayBytesByRecordId fetches bytes from R2`() = runTest {
+        val recordId = insertRecord("kz_record_replay", "uid-record-replay")
+        val payload = byteArrayOf(0x28, 0xB5.toByte(), 0x2F, 0xFD.toByte(), 0x04)
+        val r2Key = "replays/$recordId.krpz"
+        transaction {
+            MapRecordsTable.update({ MapRecordsTable.id eq recordId }) {
+                it[replayR2Key] = r2Key
+            }
+        }
+        r2.getResponses[r2Key] = payload
+
+        val bytes = service.getReplayBytesByRecordId(recordId)
+
+        assertNotNull(bytes)
+        assertContentEquals(payload, bytes)
+        assertEquals(listOf(r2Key), r2.getCalls)
+    }
+
     // ─── gcOldReplays ────────────────────────────────────────────────────────
 
     @Test

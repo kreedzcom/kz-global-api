@@ -10,6 +10,7 @@ import io.ktor.server.testing.*
 import io.mockk.*
 import kz.global.api.config.R2Config
 import kz.global.api.db.tables.*
+import kz.global.api.domain.replays.FakeR2Client
 import kz.global.api.storage.R2Client
 import kz.global.api.support.TestDatabase
 import kz.global.api.support.adminAuth
@@ -242,6 +243,51 @@ class RecordsRouteTest {
         assertEquals(HttpStatusCode.OK, response.status)
         val item = Json.parseToJsonElement(response.bodyAsText()).jsonObject["items"]!!.jsonArray.single()
         assertEquals("RouteTestPlayer", item.jsonObject["player_nickname"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `GET record replay requires admin auth`() = testApplication {
+        setupAdminRoutes()
+        val id = insertRecord("kz_replay_auth")
+
+        val response = client.get("/admin/records/$id/replay")
+
+        assertEquals(HttpStatusCode.Unauthorized, response.status)
+    }
+
+    @Test
+    fun `GET record replay returns bytes when replay exists`() = testApplication {
+        val r2 = FakeR2Client()
+        setupAdminRoutes(r2Client = r2)
+        val id = insertRecord("kz_replay_bytes")
+        val payload = byteArrayOf(0x28, 0xB5.toByte(), 0x2F, 0xFD.toByte(), 0x01)
+        val r2Key = "replays/$id.krpz"
+        r2.getResponses[r2Key] = payload
+        transaction {
+            MapRecordsTable.update({ MapRecordsTable.id eq id }) {
+                it[MapRecordsTable.replayR2Key] = r2Key
+            }
+        }
+
+        val response = client.get("/admin/records/$id/replay") {
+            header(HttpHeaders.Authorization, adminAuth())
+        }
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertContentEquals(payload, response.bodyAsBytes())
+        assertEquals("inline", response.headers[HttpHeaders.ContentDisposition])
+    }
+
+    @Test
+    fun `GET record replay returns 404 when replay missing`() = testApplication {
+        setupAdminRoutes()
+        val id = insertRecord("kz_no_replay_file")
+
+        val response = client.get("/admin/records/$id/replay") {
+            header(HttpHeaders.Authorization, adminAuth())
+        }
+
+        assertEquals(HttpStatusCode.NotFound, response.status)
     }
 
     // ─── PATCH /admin/records/{id} ────────────────────────────────────────────

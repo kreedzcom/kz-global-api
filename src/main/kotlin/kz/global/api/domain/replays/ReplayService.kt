@@ -250,6 +250,19 @@ class ReplayService(
         return r2Client.get(r2Key)
     }
 
+    suspend fun getReplayBytesByRecordId(recordId: Uuid): ByteArray? {
+        val r2Key = withContext(ioDispatcher) {
+            suspendTransaction {
+                MapRecordsTable
+                    .select(MapRecordsTable.replayR2Key)
+                    .where { MapRecordsTable.id eq recordId }
+                    .singleOrNull()
+                    ?.get(MapRecordsTable.replayR2Key)
+            }
+        } ?: return null
+        return r2Client.get(r2Key)
+    }
+
     private suspend fun findWrReplayKey(mapName: String, category: String): String? =
         withContext(ioDispatcher) {
             suspendTransaction {
