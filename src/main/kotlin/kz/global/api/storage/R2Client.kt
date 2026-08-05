@@ -6,6 +6,7 @@ import aws.sdk.kotlin.services.s3.model.GetObjectRequest
 import aws.sdk.kotlin.services.s3.model.PutObjectRequest
 import aws.sdk.kotlin.services.s3.presigners.presignGetObject
 import aws.smithy.kotlin.runtime.content.ByteStream
+import aws.smithy.kotlin.runtime.content.toByteArray
 import aws.smithy.kotlin.runtime.net.url.Url
 import kz.global.api.config.R2Config
 import org.slf4j.LoggerFactory
@@ -35,6 +36,17 @@ open class R2Client(
             this.key = key
             body = ByteStream.fromBytes(bytes)
         })
+    }
+
+    open suspend fun get(key: String): ByteArray {
+        log.debug("Fetching R2 key: {}", key)
+        val response = client.getObject(GetObjectRequest {
+            bucket = config.bucket
+            this.key = key
+        }) {
+            it.body?.toByteArray() ?: ByteArray(0)
+        }
+        return response
     }
 
     open suspend fun presignedGetUrl(key: String): String {

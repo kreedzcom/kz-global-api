@@ -122,6 +122,7 @@ fun Application.module() {
         recordsRoute()
         mapTimesRoute()
         playersRoute()
+        mapsReplayRoute()
     }
 
 }

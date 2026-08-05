@@ -245,6 +245,11 @@ class ReplayService(
         return r2Client.presignedGetUrl(r2Key)
     }
 
+    suspend fun getReplayBytes(mapName: String, category: String): ByteArray? {
+        val r2Key = findWrReplayKey(mapName, category) ?: return null
+        return r2Client.get(r2Key)
+    }
+
     private suspend fun findWrReplayKey(mapName: String, category: String): String? =
         withContext(ioDispatcher) {
             suspendTransaction {

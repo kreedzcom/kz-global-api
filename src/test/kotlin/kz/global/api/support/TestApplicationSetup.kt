@@ -78,6 +78,7 @@ fun ApplicationTestBuilder.setupAdminRoutes(
             recordsRoute()
             mapTimesRoute()
             playersRoute()
+            mapsReplayRoute()
         }
     }
 }

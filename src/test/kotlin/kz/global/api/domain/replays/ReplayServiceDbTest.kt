@@ -35,9 +35,17 @@ class FakeR2Client : R2Client(
     val putCalls = mutableListOf<Pair<String, ByteArray>>()
     val deleteCalls = mutableListOf<String>()
     val presignCalls = mutableListOf<String>()
+    val getCalls = mutableListOf<String>()
+    val getResponses = mutableMapOf<String, ByteArray>()
 
     override suspend fun put(key: String, bytes: ByteArray) {
         putCalls += key to bytes
+        getResponses[key] = bytes
+    }
+
+    override suspend fun get(key: String): ByteArray {
+        getCalls += key
+        return getResponses[key] ?: ByteArray(0)
     }
 
     override suspend fun delete(key: String) {
@@ -170,6 +178,42 @@ class ReplayServiceDbTest {
 
         assertNotNull(url)
         assertEquals(listOf(r2Key), r2.presignCalls)
+    }
+
+    // ─── getReplayBytes ──────────────────────────────────────────────────────
+
+    @Test
+    fun `getReplayBytes returns null when no WR replay exists`() = runTest {
+        transaction { MapsTable.insertIgnore { it[name] = "kz_no_wr" } }
+
+        val bytes = service.getReplayBytes("kz_no_wr", "pro")
+
+        assertNull(bytes)
+        assertTrue(r2.getCalls.isEmpty())
+    }
+
+    @Test
+    fun `getReplayBytes fetches bytes from R2 for WR replay`() = runTest {
+        val recordId = insertRecord("kz_get", "uid-get")
+        val payload = byteArrayOf(0x28, 0xB5.toByte(), 0x2F, 0xFD.toByte())
+        val r2Key = "replays/$recordId.krpz"
+        transaction {
+            WorldRecordsTable.insert {
+                it[mapName] = "kz_get"
+                it[category] = "pro"
+                it[WorldRecordsTable.recordId] = recordId
+            }
+            MapRecordsTable.update({ MapRecordsTable.id eq recordId }) {
+                it[replayR2Key] = r2Key
+            }
+        }
+        r2.getResponses[r2Key] = payload
+
+        val bytes = service.getReplayBytes("kz_get", "pro")
+
+        assertNotNull(bytes)
+        assertContentEquals(payload, bytes)
+        assertEquals(listOf(r2Key), r2.getCalls)
     }
 
     // ─── gcOldReplays ────────────────────────────────────────────────────────
