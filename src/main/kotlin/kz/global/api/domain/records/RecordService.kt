@@ -3,6 +3,7 @@ package kz.global.api.domain.records
 import kz.global.api.config.SecurityConfig
 import kz.global.api.db.tables.*
 import kz.global.api.domain.players.PlayerBanService
+import kz.global.api.domain.replays.ReplayService
 import kz.global.api.events.AuditLogger
 import kz.global.api.events.KzEvent
 import kz.global.api.events.KzEventBus
@@ -41,6 +42,7 @@ class RecordService(
     private val metrics: KzMetrics,
     private val playerBanService: PlayerBanService,
     private val security: SecurityConfig,
+    private val replayService: ReplayService,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val log = LoggerFactory.getLogger(RecordService::class.java)
@@ -63,6 +65,10 @@ class RecordService(
 
         if (txResult is LeaderboardResult) {
             emitEvents(txResult, payload, serverId)
+            replayService.pruneReplaysOutsideTop10(
+                payload.mapName,
+                replayService.categoryForGochecks(payload.gochecks),
+            )
             return RecordResult.Accepted(txResult.recordId, txResult.isPb)
         }
         if (txResult is RecordResult.Accepted) {
@@ -105,6 +111,10 @@ class RecordService(
         } ?: return@withContext false
 
         emitEvents(finalized.first, finalized.second, finalized.third)
+        replayService.pruneReplaysOutsideTop10(
+            finalized.second.mapName,
+            replayService.categoryForGochecks(finalized.second.gochecks),
+        )
         true
     }
 

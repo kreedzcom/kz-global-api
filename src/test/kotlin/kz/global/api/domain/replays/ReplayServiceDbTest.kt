@@ -231,13 +231,63 @@ class ReplayServiceDbTest {
         assertTrue(r2.deleteCalls.isEmpty())
     }
 
+    @Test
+    fun `pruneReplaysOutsideTop10 deletes R2 objects for records outside top 10`() = runTest {
+        val map = "kz_prune"
+        val topIds = (1..10).map { i ->
+            val player = "STEAM_0:0:top$i"
+            val id = insertRecord(map, "uid-top-$i", timeMs = 10_000L + i)
+            transaction {
+                PlayersTable.upsert(PlayersTable.steamid) {
+                    it[PlayersTable.steamid] = player
+                    it[lastNickname] = player
+                }
+                BestProRecordsTable.insert {
+                    it[playerSteamid] = player
+                    it[mapName] = map
+                    it[recordId] = id
+                }
+                MapRecordsTable.update({ MapRecordsTable.id eq id }) {
+                    it[replayR2Key] = "replays/$id.krpz"
+                }
+            }
+            id
+        }
+        val outsideId = insertRecord(map, "uid-outside", timeMs = 99_000L)
+        transaction {
+            PlayersTable.upsert(PlayersTable.steamid) {
+                it[PlayersTable.steamid] = "STEAM_0:0:outside"
+                it[lastNickname] = "outside"
+            }
+            BestProRecordsTable.insert {
+                it[playerSteamid] = "STEAM_0:0:outside"
+                it[mapName] = map
+                it[recordId] = outsideId
+            }
+            MapRecordsTable.update({ MapRecordsTable.id eq outsideId }) {
+                it[replayR2Key] = "replays/$outsideId.krpz"
+            }
+        }
+
+        service.pruneReplaysOutsideTop10(map, "pro")
+
+        assertEquals(listOf("replays/$outsideId.krpz"), r2.deleteCalls)
+        transaction {
+            topIds.forEach { id ->
+                assertEquals("replays/$id.krpz", MapRecordsTable.selectAll().where { MapRecordsTable.id eq id }.single()[MapRecordsTable.replayR2Key])
+            }
+            assertNull(MapRecordsTable.selectAll().where { MapRecordsTable.id eq outsideId }.single()[MapRecordsTable.replayR2Key])
+        }
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
-    private fun insertRecord(map: String, localUid: String): kotlin.uuid.Uuid {
+    private fun insertRecord(map: String, localUid: String, timeMs: Long = 30_000L): kotlin.uuid.Uuid {
         val id = uuidV7()
         val srvId = serverId
         val pvId = pluginVersionId
         val sid = steamid
+        val recordTimeMs = timeMs
         transaction {
             MapsTable.insertIgnore { it[name] = map }
             MapRecordsTable.insert {
@@ -245,7 +295,7 @@ class ReplayServiceDbTest {
                 it[MapRecordsTable.serverId] = srvId
                 it[playerSteamid] = sid
                 it[mapName] = map
-                it[timeMs] = 30_000L
+                it[MapRecordsTable.timeMs] = recordTimeMs
                 it[checkpoints] = 0
                 it[gochecks] = 0
                 it[MapRecordsTable.localUid] = localUid

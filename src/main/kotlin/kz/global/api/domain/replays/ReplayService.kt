@@ -1,6 +1,8 @@
 package kz.global.api.domain.replays
 
 import kz.global.api.config.SecurityConfig
+import kz.global.api.db.tables.BestNubRecordsTable
+import kz.global.api.db.tables.BestProRecordsTable
 import kz.global.api.db.tables.MapRecordsTable
 import kz.global.api.db.tables.WorldRecordsTable
 import kz.global.api.metrics.KzMetrics
@@ -30,6 +32,7 @@ import kotlin.time.Duration.Companion.days
 private const val HEADER_SIZE = 92
 private const val LOCAL_UID_LEN = 64
 private const val MAX_REPLAY_CHUNKS = 50_000
+const val TOP_REPLAY_COUNT = 10
 
 data class ReplayChunk(
     val localUid: String,
@@ -184,22 +187,77 @@ class ReplayService(
         log.info("Stored replay for record {} at {}", recordId, r2Key)
     }
 
-    suspend fun getPresignedUrl(mapName: String): String? {
-        val r2Key = withContext(ioDispatcher) {
+    fun categoryForGochecks(gochecks: Int): String = if (gochecks == 0) "pro" else "nub"
+
+    suspend fun isRecordInTop10(recordId: Uuid, mapName: String, category: String): Boolean =
+        withContext(ioDispatcher) {
+            suspendTransaction {
+                recordId in findTop10RecordIds(mapName, category)
+            }
+        }
+
+    suspend fun pruneReplaysOutsideTop10(mapName: String, category: String) {
+        val toDelete = withContext(ioDispatcher) {
+            suspendTransaction {
+                val top10Ids = findTop10RecordIds(mapName, category)
+                val categoryFilter = if (category == "pro") {
+                    MapRecordsTable.gochecks eq 0
+                } else {
+                    MapRecordsTable.gochecks greater 0
+                }
+
+                MapRecordsTable
+                    .select(MapRecordsTable.id, MapRecordsTable.replayR2Key)
+                    .where {
+                        (MapRecordsTable.mapName eq mapName) and
+                            categoryFilter and
+                            MapRecordsTable.replayR2Key.isNotNull() and
+                            (MapRecordsTable.id notInList top10Ids.toList())
+                    }
+                    .map { row -> row[MapRecordsTable.id] to row[MapRecordsTable.replayR2Key]!! }
+            }
+        }
+
+        if (toDelete.isEmpty()) return
+
+        var pruned = 0
+        for ((recordId, r2Key) in toDelete) {
+            runCatching { r2Client.delete(r2Key) }
+                .onSuccess {
+                    pruned++
+                    withContext(ioDispatcher) {
+                        suspendTransaction {
+                            MapRecordsTable.update({ MapRecordsTable.id eq recordId }) {
+                                it[MapRecordsTable.replayR2Key] = null
+                            }
+                        }
+                    }
+                }
+                .onFailure { log.warn("Failed to delete replay {}: {}", r2Key, it.message) }
+        }
+        if (pruned > 0) {
+            log.info("Pruned {} replays outside top {} for map={} category={}", pruned, TOP_REPLAY_COUNT, mapName, category)
+        }
+    }
+
+    suspend fun getPresignedUrl(mapName: String, category: String = "nub"): String? {
+        val r2Key = findWrReplayKey(mapName, category) ?: return null
+        return r2Client.presignedGetUrl(r2Key)
+    }
+
+    private suspend fun findWrReplayKey(mapName: String, category: String): String? =
+        withContext(ioDispatcher) {
             suspendTransaction {
                 (WorldRecordsTable innerJoin MapRecordsTable)
                     .selectAll()
                     .where {
                         (WorldRecordsTable.mapName eq mapName) and
-                            (WorldRecordsTable.category eq "nub")
+                            (WorldRecordsTable.category eq category)
                     }
                     .singleOrNull()
                     ?.get(MapRecordsTable.replayR2Key)
             }
-        } ?: return null
-
-        return r2Client.presignedGetUrl(r2Key)
-    }
+        }
 
     suspend fun gcOldReplays(daysOld: Long = 90) {
         log.info("Starting replay GC (>{} days old, non-WR)...", daysOld)
@@ -244,5 +302,26 @@ class ReplayService(
         if (this.size < prefix.size) return false
         return prefix.indices.all { this[it] == prefix[it] }
     }
+
+    private fun findTop10RecordIds(mapName: String, category: String): Set<Uuid> =
+        if (category == "pro") {
+            BestProRecordsTable
+                .join(MapRecordsTable, JoinType.INNER, BestProRecordsTable.recordId, MapRecordsTable.id)
+                .select(BestProRecordsTable.recordId)
+                .where { BestProRecordsTable.mapName eq mapName }
+                .orderBy(MapRecordsTable.timeMs)
+                .limit(TOP_REPLAY_COUNT)
+                .map { it[BestProRecordsTable.recordId] }
+                .toSet()
+        } else {
+            BestNubRecordsTable
+                .join(MapRecordsTable, JoinType.INNER, BestNubRecordsTable.recordId, MapRecordsTable.id)
+                .select(BestNubRecordsTable.recordId)
+                .where { BestNubRecordsTable.mapName eq mapName }
+                .orderBy(MapRecordsTable.timeMs)
+                .limit(TOP_REPLAY_COUNT)
+                .map { it[BestNubRecordsTable.recordId] }
+                .toSet()
+        }
 
 }

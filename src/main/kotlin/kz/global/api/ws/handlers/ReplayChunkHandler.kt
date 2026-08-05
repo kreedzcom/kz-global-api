@@ -4,6 +4,7 @@ import kz.global.api.db.tables.MapRecordsTable
 import kz.global.api.domain.records.RecordService
 import kz.global.api.domain.replays.ReplayAssemblyResult
 import kz.global.api.domain.replays.ReplayService
+import kz.global.api.domain.replays.TOP_REPLAY_COUNT
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.security.WsRateLimiters
 import kz.global.api.ws.FileAckPayload
@@ -61,7 +62,7 @@ class ReplayChunkHandler(
             is ReplayAssemblyResult.Complete -> {
                 val assembled = assembly.bytes
 
-                val recordId = withContext(ioDispatcher) {
+                val recordRow = withContext(ioDispatcher) {
                     suspendTransaction {
                         MapRecordsTable
                             .selectAll()
@@ -70,11 +71,10 @@ class ReplayChunkHandler(
                                     (MapRecordsTable.serverId eq session.serverId)
                             }
                             .singleOrNull()
-                            ?.get(MapRecordsTable.id)
                     }
                 }
 
-                if (recordId == null) {
+                if (recordRow == null) {
                     log.warn(
                         "Server {}: replay complete for uid={} but no matching record for this server",
                         session.serverId,
@@ -84,12 +84,29 @@ class ReplayChunkHandler(
                     return
                 }
 
+                val recordId = recordRow[MapRecordsTable.id]
+                val mapName = recordRow[MapRecordsTable.mapName]
+                val category = replayService.categoryForGochecks(recordRow[MapRecordsTable.gochecks])
+
                 session.socket.launch {
-                    runCatching { replayService.storeReplay(recordId, chunk.localUid, assembled) }
-                        .onSuccess {
-                            recordService.finalizePendingLeaderboard(chunk.localUid)
-                            session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = true))
+                    runCatching {
+                        recordService.finalizePendingLeaderboard(chunk.localUid)
+
+                        if (replayService.isRecordInTop10(recordId, mapName, category)) {
+                            replayService.storeReplay(recordId, chunk.localUid, assembled)
                             log.info("Server {}: replay stored for record {}", session.serverId, recordId)
+                        } else {
+                            log.info(
+                                "Server {}: replay skipped for record {} (outside top {})",
+                                session.serverId,
+                                recordId,
+                                TOP_REPLAY_COUNT,
+                            )
+                        }
+                        replayService.pruneReplaysOutsideTop10(mapName, category)
+                    }
+                        .onSuccess {
+                            session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = true))
                         }
                         .onFailure { e ->
                             metrics.replayUploadFailures.increment()

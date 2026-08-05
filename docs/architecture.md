@@ -255,6 +255,8 @@ Replays are uploaded as a sequence of binary WebSocket frames, each containing a
 
 `ReplayService` validates each chunk's CRC32, assembles them in memory (with per-server concurrency, TTL, and max-byte caps), verifies the ZSTD magic bytes (`0x28 0xB5 0x2F 0xFD`) of the concatenated payload, then uploads the result to R2 under the key `replays/{record_uuid}.krpz` and records the key in `map_record.replay_r2_key`. Each in-flight upload is bound to the `server_id` that started it.
 
+**Top-10 retention:** replays are stored only for records that appear in the top 10 fastest player bests on a map (separate pro/nub leaderboards, same query as `COURSE_TOP`). Uploads for runs outside the top 10 are acknowledged but not written to R2. After each leaderboard change or replay upload, replays for displaced records are deleted from R2 and `replay_r2_key` is cleared.
+
 ---
 
 ## Observability

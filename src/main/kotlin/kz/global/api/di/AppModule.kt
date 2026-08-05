@@ -37,7 +37,7 @@ fun appModule(config: AppConfig, prometheusRegistry: PrometheusMeterRegistry) = 
         CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
     single { KzMetrics(get(), get()) }
-    single { RecordService(get(), get(), get(), get(), get()) }
+    single { RecordService(get(), get(), get(), get(), get(), get()) }
     single { ReplayService(get(), get(), get()) }
     single { BroadcastService(get(), get(), Dispatchers.IO, get(named("applicationCoroutineScope"))) }
     single {

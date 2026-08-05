@@ -66,8 +66,8 @@ fun ApplicationTestBuilder.setupAdminRoutes(
                 single<R2Client> { r2Binding }
                 single { testSecurityConfig() }
                 single { PlayerBanService() }
-                single { RecordService(get(), get(), get(), get(), get()) }
                 single { ReplayService(get(), get(), get()) }
+                single { RecordService(get(), get(), get(), get(), get(), get()) }
                 single<BroadcastService> { mockk(relaxed = true) }
             })
         }
@@ -78,7 +78,6 @@ fun ApplicationTestBuilder.setupAdminRoutes(
             recordsRoute()
             mapTimesRoute()
             playersRoute()
-            mapsReplayRoute()
         }
     }
 }

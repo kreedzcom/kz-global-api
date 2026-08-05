@@ -35,6 +35,7 @@ import org.junit.jupiter.api.TestInstance
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
@@ -71,6 +72,7 @@ class ReplayChunkHandlerTest {
             metrics,
             PlayerBanService(),
             testSecurityConfig(),
+            replayService,
             ioDispatcher = testDispatcher,
         )
         handler = ReplayChunkHandler(
@@ -171,6 +173,7 @@ class ReplayChunkHandlerTest {
     @Test
     fun `handle stores replay and sends FILE_ACK true on success`() = runTest {
         val recordId = insertRecord(serverId, "kz_ok", "uid-ok")
+        insertBestPro(steamid, "kz_ok", recordId)
         val (session, sent) = mockSession(serverId)
         val uid = "uid-ok"
         val payload = ReplayServiceTest.ZSTD_MAGIC + ByteArray(16) { it.toByte() }
@@ -202,7 +205,8 @@ class ReplayChunkHandlerTest {
             testWsRateLimiters(),
             ioDispatcher = testDispatcher,
         )
-        insertRecord(serverId, "kz_fail", "uid-store-fail")
+        val failId = insertRecord(serverId, "kz_fail", "uid-store-fail")
+        insertBestPro(steamid, "kz_fail", failId)
         val (session, sent) = mockSession(serverId)
         val payload = ReplayServiceTest.ZSTD_MAGIC + ByteArray(8)
 
@@ -227,6 +231,7 @@ class ReplayChunkHandlerTest {
             metrics,
             PlayerBanService(),
             testSecurityConfig(requireReplayForLeaderboard = true),
+            replayRequired,
             ioDispatcher = testDispatcher,
         )
         val pendingHandler = ReplayChunkHandler(
@@ -253,15 +258,59 @@ class ReplayChunkHandlerTest {
         }
     }
 
+    @Test
+    fun `handle skips R2 store when record is outside top 10 but still acks success`() = runTest {
+        val map = "kz_skip"
+        repeat(10) { i ->
+            val id = insertRecord(serverId, map, "uid-top-$i", timeMs = 20_000L + i)
+            insertBestPro(steamidFor(i), map, id)
+        }
+        val slowId = insertRecord(serverId, map, "uid-slow", timeMs = 99_000L)
+        insertBestPro("STEAM_0:0:slow", map, slowId)
+
+        val (session, sent) = mockSession(serverId)
+        val payload = ReplayServiceTest.ZSTD_MAGIC + ByteArray(8)
+
+        handler.handle(session, ReplayServiceTest.buildChunk("uid-slow", payload, 0, 1))
+
+        assertTrue(sent().single().data.jsonObject["status"]!!.jsonPrimitive.boolean)
+        assertTrue(r2.putCalls.isEmpty())
+        transaction {
+            assertNull(
+                MapRecordsTable.selectAll()
+                    .where { MapRecordsTable.id eq slowId }
+                    .single()[MapRecordsTable.replayR2Key],
+            )
+        }
+    }
+
+    private fun steamidFor(index: Int) = "STEAM_0:0:top$index"
+
+    private fun insertBestPro(playerSteamid: String, map: String, recordId: Uuid) {
+        transaction {
+            PlayersTable.upsert(PlayersTable.steamid) {
+                it[PlayersTable.steamid] = playerSteamid
+                it[lastNickname] = playerSteamid
+            }
+            BestProRecordsTable.insert {
+                it[BestProRecordsTable.playerSteamid] = playerSteamid
+                it[mapName] = map
+                it[BestProRecordsTable.recordId] = recordId
+            }
+        }
+    }
+
     private fun insertRecord(
         srvId: Int,
         map: String,
         localUid: String,
         leaderboardPending: Boolean = false,
+        timeMs: Long = 30_000L,
     ): Uuid {
         val id = uuidV7()
         val pvId = pluginVersionId
         val sid = steamid
+        val recordTimeMs = timeMs
         transaction {
             MapsTable.insertIgnore { it[name] = map }
             MapRecordsTable.insert {
@@ -269,7 +318,7 @@ class ReplayChunkHandlerTest {
                 it[MapRecordsTable.serverId] = srvId
                 it[playerSteamid] = sid
                 it[mapName] = map
-                it[timeMs] = 30_000L
+                it[MapRecordsTable.timeMs] = recordTimeMs
                 it[checkpoints] = 0
                 it[gochecks] = 0
                 it[MapRecordsTable.localUid] = localUid

@@ -8,6 +8,7 @@ import kz.global.api.events.AuditLogger
 import kz.global.api.events.KzEventBus
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.support.TestDatabase
+import kz.global.api.support.testReplayService
 import kz.global.api.support.testSecurityConfig
 import kz.global.api.ws.AddRecordPayload
 import kz.global.api.ws.ConnectedServersRegistry
@@ -34,7 +35,7 @@ class RecordServiceTest {
     private val eventBus = KzEventBus()
     private val metrics = KzMetrics(SimpleMeterRegistry(), ConnectedServersRegistry())
     private val banService = PlayerBanService()
-    private val service = RecordService(eventBus, auditLogger, metrics, banService, testSecurityConfig())
+    private val service = RecordService(eventBus, auditLogger, metrics, banService, testSecurityConfig(), testReplayService())
 
     private var serverId = 0
     private var pluginVersionId = 0

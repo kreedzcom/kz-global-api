@@ -1,6 +1,14 @@
 package kz.global.api.support
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import io.mockk.mockk
 import kz.global.api.config.SecurityConfig
+import kz.global.api.domain.replays.ReplayService
+import kz.global.api.metrics.KzMetrics
+import kz.global.api.storage.R2Client
+import kz.global.api.ws.ConnectedServersRegistry
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 
 fun testSecurityConfig(
     requireReplayForLeaderboard: Boolean = false,
@@ -36,4 +44,15 @@ fun testWsRateLimitersStrict() = kz.global.api.security.WsRateLimiters(
 
 fun testWsRateLimitersStrictReplayBytes() = kz.global.api.security.WsRateLimiters(
     testSecurityConfig(replayBytesPerServerPerSecond = 100),
+)
+
+fun testReplayService(
+    r2Client: R2Client = mockk(relaxed = true),
+    security: SecurityConfig = testSecurityConfig(),
+    ioDispatcher: CoroutineDispatcher = Dispatchers.Unconfined,
+): ReplayService = ReplayService(
+    r2Client,
+    KzMetrics(SimpleMeterRegistry(), ConnectedServersRegistry()),
+    security,
+    ioDispatcher = ioDispatcher,
 )

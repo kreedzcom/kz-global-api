@@ -3,12 +3,14 @@ package kz.global.api.ws.handlers
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.mockk
 import kz.global.api.db.tables.*
+import kz.global.api.domain.replays.ReplayService
 import kz.global.api.domain.records.RecordService
 import kz.global.api.events.AuditLogger
 import kz.global.api.events.KzEventBus
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.domain.players.PlayerBanService
 import kz.global.api.support.TestDatabase
+import kz.global.api.support.testReplayService
 import kz.global.api.support.testSecurityConfig
 import kz.global.api.support.testWsRateLimiters
 import kz.global.api.support.testWsRateLimitersStrict
@@ -34,6 +36,7 @@ class AddRecordHandlerTest {
         metrics = KzMetrics(SimpleMeterRegistry(), ConnectedServersRegistry()),
         playerBanService = PlayerBanService(),
         security = testSecurityConfig(),
+        replayService = testReplayService(),
     )
     private val handler = AddRecordHandler(recordService, testWsRateLimiters())
 
