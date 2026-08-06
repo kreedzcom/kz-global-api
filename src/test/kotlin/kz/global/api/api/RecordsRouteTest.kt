@@ -69,23 +69,32 @@ class RecordsRouteTest {
         checkpoints: Int = 0,
         gochecks: Int = 0,
         flagged: Boolean = false,
+        localUid: String? = null,
+        steamidOverride: String? = null,
     ): kotlin.uuid.Uuid {
         val id = uuidV7()
         // Capture class fields before entering lambdas whose receiver type shadows these names.
         val srvId = serverId
         val pvId = pluginVersionId
-        val sid = steamid
+        val sid = steamidOverride ?: steamid
+        val uid = localUid ?: "uid-${id}"
         transaction {
             MapsTable.insertIgnore { it[name] = map }
+            if (steamidOverride != null) {
+                PlayersTable.upsert(PlayersTable.steamid) {
+                    it[PlayersTable.steamid] = sid
+                    it[lastNickname] = "Player"
+                }
+            }
             MapRecordsTable.insert {
                 it[MapRecordsTable.id] = id
                 it[MapRecordsTable.serverId] = srvId
-                it[playerSteamid] = sid
-                it[mapName] = map
+                it[MapRecordsTable.playerSteamid] = sid
+                it[MapRecordsTable.mapName] = map
                 it[MapRecordsTable.timeMs] = timeMs
                 it[MapRecordsTable.checkpoints] = checkpoints
                 it[MapRecordsTable.gochecks] = gochecks
-                it[localUid] = "uid-${id}"
+                it[MapRecordsTable.localUid] = uid
                 it[MapRecordsTable.pluginVersionId] = pvId
                 it[MapRecordsTable.flagged] = flagged
             }
@@ -363,6 +372,45 @@ class RecordsRouteTest {
         }
 
         assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
+
+    @Test
+    fun `PATCH non-existent record returns 404`() = testApplication {
+        setupAdminRoutes()
+
+        val response = client.patch("/admin/records/${uuidV7()}") {
+            header(HttpHeaders.Authorization, adminAuth())
+            contentType(ContentType.Application.Json)
+            setBody("""{"flagged":true}""")
+        }
+
+        assertEquals(HttpStatusCode.NotFound, response.status)
+    }
+
+    @Test
+    fun `DELETE WR record promotes next fastest to world_record`() = testApplication {
+        setupAdminRoutes()
+        val wrId = insertRecord(map = "kz_promote", timeMs = 20_000L, localUid = "uid-wr")
+        val nextId = insertRecord(map = "kz_promote", timeMs = 25_000L, localUid = "uid-next", steamidOverride = "STEAM_0:0:55555")
+        transaction {
+            WorldRecordsTable.insert {
+                it[mapName] = "kz_promote"
+                it[category] = "pro"
+                it[WorldRecordsTable.recordId] = wrId
+            }
+        }
+
+        val response = client.delete("/admin/records/$wrId") {
+            header(HttpHeaders.Authorization, adminAuth())
+        }
+
+        assertEquals(HttpStatusCode.NoContent, response.status)
+        val newWr = transaction {
+            WorldRecordsTable.selectAll()
+                .where { WorldRecordsTable.mapName eq "kz_promote" }
+                .single()[WorldRecordsTable.recordId]
+        }
+        assertEquals(nextId, newWr)
     }
 
     // ─── DELETE /admin/records/{id} ───────────────────────────────────────────

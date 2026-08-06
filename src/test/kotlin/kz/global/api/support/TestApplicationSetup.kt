@@ -15,6 +15,7 @@ import kz.global.api.auth.configureAdminAuth
 import kz.global.api.config.AdminConfig
 import kz.global.api.domain.broadcast.BroadcastService
 import kz.global.api.domain.players.PlayerBanService
+import kz.global.api.domain.records.LeaderboardRepairService
 import kz.global.api.domain.records.RecordAdminService
 import kz.global.api.domain.records.RecordService
 import kz.global.api.domain.replays.ReplayService
@@ -24,6 +25,10 @@ import kz.global.api.events.KzEventBus
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.storage.R2Client
 import kz.global.api.ws.ConnectedServersRegistry
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import org.koin.core.qualifier.named
 import org.koin.dsl.module
 import org.koin.ktor.plugin.Koin
 import io.ktor.http.*
@@ -40,10 +45,13 @@ fun ApplicationTestBuilder.setupAdminRoutes(
     adminKey: String = TEST_ADMIN_KEY,
     r2Client: R2Client = mockk(relaxed = true),
     configureRegistry: ConnectedServersRegistry.() -> Unit = {},
+    broadcastService: BroadcastService? = null,
 ) {
     val r2Binding = r2Client
+    val broadcastBinding = broadcastService
     application {
         val meterRegistry = SimpleMeterRegistry()
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
 
         install(ContentNegotiation) { json() }
 
@@ -69,8 +77,20 @@ fun ApplicationTestBuilder.setupAdminRoutes(
                 single { PlayerBanService() }
                 single { ReplayService(get(), get(), get()) }
                 single { RecordService(get(), get(), get(), get(), get(), get()) }
-                single { RecordAdminService() }
-                single<BroadcastService> { mockk(relaxed = true) }
+                single { LeaderboardRepairService() }
+                single(named("applicationCoroutineScope")) { testScope }
+                single {
+                    RecordAdminService(
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        get(),
+                        broadcastBinding ?: BroadcastService(get(), get(), Dispatchers.Unconfined, testScope),
+                        get(),
+                        get(named("applicationCoroutineScope")),
+                    )
+                }
             })
         }
 

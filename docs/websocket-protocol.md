@@ -44,6 +44,7 @@ Binary frames are used exclusively for **replay chunk uploads** (see below).
 | `6` | `WANT_COURSE_TOP` | Request leaderboard for a map / category |
 | `7` | `WANT_PLAYER_RECORDS` | Request a player's personal records on a map |
 | `8` | `ADD_RECORD` | Submit a completed run |
+| `9` | `GET_REPLAY` | Request presigned URL for the current map's WR replay |
 
 ### Outbound (API → plugin)
 
@@ -55,6 +56,8 @@ Binary frames are used exclusively for **replay chunk uploads** (see below).
 | `104` | `PLAYER_RECORDS` | A player's personal times |
 | `105` | `RECORD_ACK` | Confirmation of a submitted run |
 | `106` | `FILE_ACK` | Confirmation of a replay upload |
+| `108` | `GET_REPLAY_ACK` | Presigned HTTPS URL for the WR replay |
+| `109` | `DEL_RECORD_NOTIFY` | Admin invalidated a record; delete local replay (`msg_id` is `0`) |
 | `199` | `ERROR` | Error response |
 
 ---
@@ -270,7 +273,44 @@ Only non-flagged records are returned.
 
 ### World record push (uses `MAP_INFO` / 102)
 
-When a world record changes, the API pushes **`MAP_INFO` (`msg_type` 102)** with `msg_id` `0` to every connected game server currently on that map (same JSON shape as the `WANT_MAP_INFO` response). There is no separate `WR_BROADCAST` message type in the current implementation.
+When a world record changes, the API pushes **`MAP_INFO` (`msg_type` 102)** with `msg_id` `0` to every connected game server currently on that map (same JSON shape as the `WANT_MAP_INFO` response). There is no separate `WR_BROADCAST` message type in the current implementation. Servers that are offline or on another map miss the push and resync on the next `MAP_CHANGE` or `WANT_MAP_INFO`.
+
+### `GET_REPLAY` (9)
+
+```json
+{ "map_name": "kz_canyon" }
+```
+
+- Rate-limited (same bucket as `WANT_COURSE_TOP`).
+- **`map_name` must match the session's current map** — cross-map requests are rejected with `ERROR`.
+- Returns presigned URL for the **world record replay** only (pro WR preferred, nub fallback).
+
+### `GET_REPLAY_ACK` (108)
+
+```json
+{
+  "url": "https://...",
+  "local_uid": "0_00012345_steam_abc",
+  "map_name": "kz_canyon"
+}
+```
+
+- `url` — HTTPS presigned GET URL, valid for **1 hour**.
+- Plugin downloads via HTTPS only, validates zstd magic, saves to `kz_global/replays/{map_name}/{local_uid}.krpz`.
+
+### `DEL_RECORD_NOTIFY` (109)
+
+Broadcast when an admin deletes or flags a record (`msg_id` `0`):
+
+```json
+{
+  "record_id": "<uuid>",
+  "map_name": "kz_canyon",
+  "local_uid": "0_00012345_steam_abc"
+}
+```
+
+Sent only to servers currently on `map_name`. Plugin deletes the local replay file and resets the SR bot if it was playing that replay.
 
 ### `ERROR` (199)
 

@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import io.micrometer.core.instrument.Timer
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
@@ -154,6 +155,7 @@ class RecordService(
         pluginVersionId: Int,
         payload: AddRecordPayload,
     ): Any = withContext(ioDispatcher) {
+        val sample = Timer.start()
         try {
             suspendTransaction {
                 val existing = MapRecordsTable
@@ -233,8 +235,11 @@ class RecordService(
                 metrics.recordsSubmitted.increment()
                 if (isWrNub || isWrPro) metrics.worldRecords.increment()
                 LeaderboardResult(recordId, isPb, isWrNub, isWrPro)
+            }.also {
+                sample.stop(metrics.recordPersistLatency)
             }
         } catch (e: Exception) {
+            sample.stop(metrics.recordPersistLatency)
             if (!isUniqueConstraintViolation(e)) throw e
             val dupId = suspendTransaction {
                 MapRecordsTable

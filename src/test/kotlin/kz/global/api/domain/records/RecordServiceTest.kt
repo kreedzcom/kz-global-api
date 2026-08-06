@@ -338,4 +338,13 @@ class RecordServiceTest {
             assertEquals(nubResult.recordId, nubBest[BestNubRecordsTable.recordId])
         }
     }
+
+    @Test
+    fun `submit records persist latency observation`() = runTest {
+        val payload = AddRecordPayload(steamid, "kz_canyon", 32_000L, "uid-latency", 0, 0)
+
+        service.submit(serverId, pluginVersionId, payload)
+
+        assertTrue(metrics.recordPersistLatency.count() > 0)
+    }
 }

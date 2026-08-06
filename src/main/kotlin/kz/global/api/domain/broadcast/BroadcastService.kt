@@ -4,6 +4,7 @@ import kz.global.api.db.tables.*
 import kz.global.api.domain.maps.MapMetadata
 import kz.global.api.events.KzEventBus
 import kz.global.api.ws.ConnectedServersRegistry
+import kz.global.api.ws.DelRecordNotifyPayload
 import kz.global.api.ws.MapInfoPayload
 import kz.global.api.ws.MsgType
 import kotlinx.coroutines.CoroutineDispatcher
@@ -47,6 +48,15 @@ class BroadcastService(
         }
     }
 
+    suspend fun broadcastRecordInvalidated(mapName: String, payload: DelRecordNotifyPayload) {
+        val sessions = registry.sessionsOnMap(mapName)
+        log.info("Broadcasting record invalidation for '{}' to {} server(s)", mapName, sessions.size)
+        sessions.forEach { session ->
+            runCatching { session.sendJson(MsgType.DEL_RECORD_NOTIFY, 0, payload) }
+                .onFailure { log.warn("Failed to broadcast invalidation to server {}: {}", session.serverId, it.message) }
+        }
+    }
+
     suspend fun getMapInfo(mapName: String): MapInfoPayload? = suspendTransaction() {
         val mapRow = MapsTable.selectAll().where { MapsTable.name eq mapName }.singleOrNull()
             ?: return@suspendTransaction null
@@ -71,7 +81,8 @@ class BroadcastService(
             .selectAll()
             .where {
                 (WorldRecordsTable.mapName eq mapName) and
-                (WorldRecordsTable.category eq category)
+                (WorldRecordsTable.category eq category) and
+                (MapRecordsTable.flagged eq false)
             }
             .singleOrNull()
             ?.let { row ->

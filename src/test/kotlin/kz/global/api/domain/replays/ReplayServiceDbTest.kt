@@ -180,6 +180,39 @@ class ReplayServiceDbTest {
         assertEquals(listOf(r2Key), r2.presignCalls)
     }
 
+    @Test
+    fun `getWrReplayPresignedUrl prefers pro WR replay over nub`() = runTest {
+        val nubId = insertRecord("kz_both", "uid-nub")
+        val proId = insertRecord("kz_both", "uid-pro")
+        transaction {
+            MapRecordsTable.update({ MapRecordsTable.id eq nubId }) {
+                it[gochecks] = 2
+                it[replayR2Key] = "replays/nub.krpz"
+            }
+            MapRecordsTable.update({ MapRecordsTable.id eq proId }) {
+                it[gochecks] = 0
+                it[replayR2Key] = "replays/pro.krpz"
+            }
+            WorldRecordsTable.insert {
+                it[mapName] = "kz_both"
+                it[category] = "nub"
+                it[WorldRecordsTable.recordId] = nubId
+            }
+            WorldRecordsTable.insert {
+                it[mapName] = "kz_both"
+                it[category] = "pro"
+                it[WorldRecordsTable.recordId] = proId
+            }
+        }
+
+        val result = service.getWrReplayPresignedUrl("kz_both")
+
+        assertNotNull(result)
+        assertEquals("pro", result.category)
+        assertEquals("uid-pro", result.localUid)
+        assertEquals(listOf("replays/pro.krpz"), r2.presignCalls)
+    }
+
     // ─── getReplayBytes ──────────────────────────────────────────────────────
 
     @Test

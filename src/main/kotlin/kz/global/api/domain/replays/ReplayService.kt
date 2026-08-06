@@ -34,6 +34,13 @@ private const val LOCAL_UID_LEN = 64
 private const val MAX_REPLAY_CHUNKS = 50_000
 const val TOP_REPLAY_COUNT = 10
 
+data class WrReplayUrl(
+    val url: String,
+    val localUid: String,
+    val mapName: String,
+    val category: String,
+)
+
 data class ReplayChunk(
     val localUid: String,
     val checksum: Long,
@@ -245,6 +252,20 @@ class ReplayService(
         return r2Client.presignedGetUrl(r2Key)
     }
 
+    suspend fun getWrReplayPresignedUrl(mapName: String): WrReplayUrl? = withContext(ioDispatcher) {
+        for (category in listOf("pro", "nub")) {
+            val record = findWrReplayRecord(mapName, category) ?: continue
+            val url = r2Client.presignedGetUrl(record.r2Key)
+            return@withContext WrReplayUrl(
+                url = url,
+                localUid = record.localUid,
+                mapName = mapName,
+                category = category,
+            )
+        }
+        null
+    }
+
     suspend fun getReplayBytes(mapName: String, category: String): ByteArray? {
         val r2Key = findWrReplayKey(mapName, category) ?: return null
         return r2Client.get(r2Key)
@@ -262,6 +283,26 @@ class ReplayService(
         } ?: return null
         return r2Client.get(r2Key)
     }
+
+    private data class WrReplayRecord(val r2Key: String, val localUid: String)
+
+    private suspend fun findWrReplayRecord(mapName: String, category: String): WrReplayRecord? =
+        withContext(ioDispatcher) {
+            suspendTransaction {
+                (WorldRecordsTable innerJoin MapRecordsTable)
+                    .select(MapRecordsTable.replayR2Key, MapRecordsTable.localUid)
+                    .where {
+                        (WorldRecordsTable.mapName eq mapName) and
+                            (WorldRecordsTable.category eq category) and
+                            MapRecordsTable.replayR2Key.isNotNull()
+                    }
+                    .singleOrNull()
+                    ?.let { row ->
+                        val key = row[MapRecordsTable.replayR2Key] ?: return@let null
+                        WrReplayRecord(key, row[MapRecordsTable.localUid])
+                    }
+            }
+        }
 
     private suspend fun findWrReplayKey(mapName: String, category: String): String? =
         withContext(ioDispatcher) {

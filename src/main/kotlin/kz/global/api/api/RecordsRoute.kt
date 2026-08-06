@@ -5,17 +5,13 @@ import io.ktor.server.auth.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import kz.global.api.db.tables.*
 import kz.global.api.domain.records.AdminRecordFilters
+import kz.global.api.domain.records.AdminRecordMutationResult
 import kz.global.api.domain.records.RecordAdminService
 import kz.global.api.domain.replays.ReplayService
 import kz.global.api.security.WsPayloadValidator
-import kz.global.api.storage.R2Client
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import org.jetbrains.exposed.v1.core.*
-import org.jetbrains.exposed.v1.jdbc.*
-import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 import org.koin.ktor.ext.getKoin
 import org.koin.ktor.ext.inject
 import kotlin.uuid.Uuid
@@ -105,43 +101,24 @@ fun Route.recordsRoute() {
                     }
                 }
 
-                suspendTransaction() {
-                    MapRecordsTable.update({ MapRecordsTable.id eq recordId }) {
-                        if (req.flagged != null) it[flagged] = req.flagged
-                        if (req.reviewed != null) it[reviewed] = req.reviewed
-                        if (req.timeMs != null) it[timeMs] = req.timeMs
-                    }
+                val service = call.getKoin().get<RecordAdminService>()
+                when (service.patchRecord(recordId, req)) {
+                    AdminRecordMutationResult.NotFound -> call.respond(HttpStatusCode.NotFound)
+                    is AdminRecordMutationResult.Patched -> call.respond(HttpStatusCode.NoContent)
+                    is AdminRecordMutationResult.Deleted -> call.respond(HttpStatusCode.NoContent)
                 }
-                call.respond(HttpStatusCode.NoContent)
             }
 
             delete("/{id}") {
                 val recordId = runCatching { Uuid.parse(call.parameters["id"]!!) }.getOrNull()
                     ?: return@delete call.respond(HttpStatusCode.BadRequest, "Invalid UUID")
 
-                val r2Client = call.getKoin().get<R2Client>()
-
-                val outcome: Pair<Boolean, String?> = suspendTransaction() {
-                    val row = MapRecordsTable.selectAll()
-                        .where { MapRecordsTable.id eq recordId }
-                        .singleOrNull()
-                        ?: return@suspendTransaction Pair(false, null)
-
-                    val replayKey = row[MapRecordsTable.replayR2Key]
-                    MapRecordsTable.deleteWhere { MapRecordsTable.id eq recordId }
-                    Pair(true, replayKey)
+                val service = call.getKoin().get<RecordAdminService>()
+                when (service.deleteRecord(recordId)) {
+                    AdminRecordMutationResult.NotFound -> call.respond(HttpStatusCode.NotFound)
+                    is AdminRecordMutationResult.Deleted -> call.respond(HttpStatusCode.NoContent)
+                    is AdminRecordMutationResult.Patched -> call.respond(HttpStatusCode.NoContent)
                 }
-
-                if (!outcome.first) {
-                    call.respond(HttpStatusCode.NotFound)
-                    return@delete
-                }
-
-                outcome.second?.let { key ->
-                    runCatching { r2Client.delete(key) }
-                }
-
-                call.respond(HttpStatusCode.NoContent)
             }
         }
     }

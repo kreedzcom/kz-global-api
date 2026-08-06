@@ -208,7 +208,7 @@ Tracks in-flight multi-chunk replay uploads (schema only — current state is he
 
 **UUIDv7 primary keys** — `map_record.id` uses time-ordered UUIDs (v7). This keeps B-tree inserts sequential (no random page splits), embeds creation time, and avoids auto-increment integer overflow at scale.
 
-**Denormalised leaderboard tables** — `best_nub_record`, `best_pro_record`, and `world_record` are write-through caches updated inside the same transaction as `map_record` inserts. This makes leaderboard queries O(1) lookups instead of full aggregations.
+**Denormalised leaderboard tables** — `best_nub_record`, `best_pro_record`, and `world_record` are write-through caches updated inside the same transaction as `map_record` inserts (via `RecordService`) or admin mutations (via `LeaderboardRepairService` in `RecordAdminService`). Flagged records (`map_record.flagged = true`) are excluded from recompute. This makes leaderboard queries O(1) lookups instead of full aggregations.
 
 **Soft deletes for servers** — `game_server.active = false` instead of `DELETE`. This preserves `map_record` foreign-key integrity and the audit trail.
 

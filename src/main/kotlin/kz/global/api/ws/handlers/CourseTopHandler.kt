@@ -38,7 +38,10 @@ class CourseTopHandler(
                     .join(MapRecordsTable, JoinType.INNER, BestProRecordsTable.recordId, MapRecordsTable.id)
                     .join(PlayersTable, JoinType.INNER, MapRecordsTable.playerSteamid, PlayersTable.steamid)
                     .selectAll()
-                    .where { BestProRecordsTable.mapName eq payload.mapName }
+                    .where {
+                        (BestProRecordsTable.mapName eq payload.mapName) and
+                            (MapRecordsTable.flagged eq false)
+                    }
                     .orderBy(MapRecordsTable.timeMs)
                     .limit(limit)
                     .offset(offset.toLong())
@@ -58,7 +61,10 @@ class CourseTopHandler(
                     .join(MapRecordsTable, JoinType.INNER, BestNubRecordsTable.recordId, MapRecordsTable.id)
                     .join(PlayersTable, JoinType.INNER, MapRecordsTable.playerSteamid, PlayersTable.steamid)
                     .selectAll()
-                    .where { BestNubRecordsTable.mapName eq payload.mapName }
+                    .where {
+                        (BestNubRecordsTable.mapName eq payload.mapName) and
+                            (MapRecordsTable.flagged eq false)
+                    }
                     .orderBy(MapRecordsTable.timeMs)
                     .limit(limit)
                     .offset(offset.toLong())

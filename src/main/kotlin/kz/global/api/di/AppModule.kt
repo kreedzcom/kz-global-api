@@ -6,6 +6,7 @@ import kz.global.api.config.AppConfig
 import kz.global.api.db.DatabaseFactory
 import kz.global.api.domain.broadcast.BroadcastService
 import kz.global.api.domain.players.PlayerBanService
+import kz.global.api.domain.records.LeaderboardRepairService
 import kz.global.api.domain.records.RecordAdminService
 import kz.global.api.domain.records.RecordService
 import kz.global.api.domain.replays.ReplayService
@@ -38,8 +39,20 @@ fun appModule(config: AppConfig, prometheusRegistry: PrometheusMeterRegistry) = 
         CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
     single { KzMetrics(get(), get()) }
+    single { LeaderboardRepairService() }
     single { RecordService(get(), get(), get(), get(), get(), get()) }
-    single { RecordAdminService() }
+    single {
+        RecordAdminService(
+            get(),
+            get(),
+            get(),
+            get(),
+            get(),
+            get(),
+            get(),
+            get(named("applicationCoroutineScope")),
+        )
+    }
     single { ReplayService(get(), get(), get()) }
     single { BroadcastService(get(), get(), Dispatchers.IO, get(named("applicationCoroutineScope"))) }
     single {

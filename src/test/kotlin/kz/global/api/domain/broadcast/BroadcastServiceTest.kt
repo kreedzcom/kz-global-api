@@ -238,6 +238,29 @@ class BroadcastServiceTest {
         serviceScope.cancel()
     }
 
+    @Test
+    fun `broadcastRecordInvalidated sends DEL_RECORD_NOTIFY to sessions on map only`() = runTest {
+        val registry = ConnectedServersRegistry()
+        val (session1, sent1) = mockSession(1)
+        val (session2, sent2) = mockSession(2)
+        session1.currentMap = "kz_del"
+        session2.currentMap = "kz_other"
+        registry.register(session1)
+        registry.register(session2)
+
+        val service = BroadcastService(registry, KzEventBus(), Dispatchers.Unconfined, CoroutineScope(Dispatchers.Unconfined + Job()))
+        val payload = kz.global.api.ws.DelRecordNotifyPayload(
+            recordId = uuidV7().toString(),
+            mapName = "kz_del",
+            localUid = "0_00020000_steam_abc",
+        )
+
+        service.broadcastRecordInvalidated("kz_del", payload)
+
+        assertEquals(1, sent1().count { it.msgType == MsgType.DEL_RECORD_NOTIFY })
+        assertEquals(0, sent2().count { it.msgType == MsgType.DEL_RECORD_NOTIFY })
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private fun service() =

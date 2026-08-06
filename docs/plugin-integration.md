@@ -45,9 +45,7 @@ Every finished run must include **`gochecks`** (go-check count) and **`checkpoin
 - **`gochecks == 0`** — **pro** only ( **`checkpoints` may be zero** on linear maps with no intermediate checkpoints).
 - **`gochecks > 0`** — **nub** only; **`checkpoints` must be positive**.
 
-## 3. Handle `get_replay` (new message type 9) — **not implemented in the API yet**
-
-> **Note:** The server does not expose handlers or `MsgType` entries for these messages today. Treat this section as the **intended** plugin-side contract for a future API release.
+## 3. Handle `get_replay` (message type 9)
 
 When the plugin wants the WR replay for a map (e.g. on map load if no local `.krpz` found):
 
@@ -58,35 +56,53 @@ When the plugin wants the WR replay for a map (e.g. on map load if no local `.kr
 
 **Receive (msg_type 108):**
 ```json
-{ "msg_type": 108, "msg_id": 5, "data": { "url": "https://r2.../replays/...krpz" } }
+{
+  "msg_type": 108,
+  "msg_id": 5,
+  "data": {
+    "url": "https://r2.../replays/...krpz",
+    "local_uid": "0_00012345_steam_abc",
+    "map_name": "kz_longjumps2"
+  }
+}
 ```
 
-Download the file directly from the URL using the existing HTTP client, save as the local `.krpz` path, then load it for bot playback.
+Download the file over **HTTPS only** from the presigned URL (1-hour expiry), verify zstd magic bytes, save as `kz_global/replays/{map_name}/{local_uid}.krpz`, then load for bot playback.
 
-## 4. Handle `del_record` (new message type 10) — **not implemented in the API yet**
+## 4. Handle `del_record_notify` (message type 109)
 
-> Same status as §3: no server handler exists yet.
-
-When an admin deletes or invalidates a record, the API broadcasts:
+When an admin deletes or flags a record, the API broadcasts:
 
 ```json
-{ "msg_type": 109, "msg_id": 0, "data": { "record_id": "...", "map_name": "kz_longjumps2" } }
+{
+  "msg_type": 109,
+  "msg_id": 0,
+  "data": {
+    "record_id": "...",
+    "map_name": "kz_longjumps2",
+    "local_uid": "0_00012345_steam_abc"
+  }
+}
 ```
 
-The plugin should delete `maps/kz_longjumps2.krpz` from disk and reset the replay bot if it was currently playing that replay.
+The plugin deletes `kz_global/replays/{map_name}/{local_uid}.krpz` (and `.krpr` if present) and resets the replay bot if it was playing that file.
 
-## 5. Replay download on map load — **blocked until §3–4 are implemented**
+## 5. Replay download on map load
 
-After receiving `HelloAck` or `MapChange` response:
-1. Check if a local `.krpz` exists for the current map.
-2. If not, send `get_replay` to the API.
-3. On receiving the URL, download and save the file.
+After receiving `HelloAck` or `MapChange` response (`MAP_INFO`):
+1. Check if a local `.krpz` exists for the current map (`kz_pb_find_fastest`).
+2. If not, send `GET_REPLAY` (9) to the API (deduped — one in-flight request per map).
+3. On receiving `GET_REPLAY_ACK`, download, validate, save, and parse the replay.
 
-## New message type constants
+## Message type constants
 
 | Constant            | Value | Direction      |
 |---------------------|-------|----------------|
 | `GET_REPLAY`        | 9     | plugin → API   |
-| `DEL_RECORD`        | 10    | plugin → API   |
 | `GET_REPLAY_ACK`    | 108   | API → plugin   |
 | `DEL_RECORD_NOTIFY` | 109   | API → plugin   |
+
+## Natives
+
+- `kz_api_get_replay(mapname[])` — manually trigger a WR replay fetch for a map.
+- `kz_api_del_record(mapname[], local_uid[])` — delete local replay files for a record (same as `DEL_RECORD_NOTIFY` handler).

@@ -17,6 +17,7 @@ object MsgType {
     const val WANT_COURSE_TOP = 6
     const val WANT_PLAYER_RECORDS = 7
     const val ADD_RECORD = 8
+    const val GET_REPLAY = 9
 
     // Outbound (API → plugin)
     const val HELLO_ACK = 101
@@ -26,6 +27,8 @@ object MsgType {
     const val RECORD_ACK = 105
     const val FILE_ACK = 106
     const val WR_BROADCAST = 107
+    const val GET_REPLAY_ACK = 108
+    const val DEL_RECORD_NOTIFY = 109
     const val ERROR = 199
 }
 
@@ -82,6 +85,11 @@ data class WantPlayerRecordsPayload(
     val steamid: String,
     @SerialName("map_name") val mapName: String,
     val limit: Int = 50,
+)
+
+@Serializable
+data class GetReplayPayload(
+    @SerialName("map_name") val mapName: String,
 )
 
 @Serializable
@@ -169,3 +177,17 @@ data class PlayerRecordsPayload(
 
 @Serializable
 data class ErrorPayload(val message: String)
+
+@Serializable
+data class GetReplayAckPayload(
+    val url: String,
+    @SerialName("local_uid") val localUid: String,
+    @SerialName("map_name") val mapName: String,
+)
+
+@Serializable
+data class DelRecordNotifyPayload(
+    @SerialName("record_id") val recordId: String,
+    @SerialName("map_name") val mapName: String,
+    @SerialName("local_uid") val localUid: String,
+)

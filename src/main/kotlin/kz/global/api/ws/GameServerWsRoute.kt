@@ -32,6 +32,7 @@ fun Routing.gameServerWsRoute() {
     val courseTopHandler by inject<CourseTopHandler>()
     val playerRecordsHandler by inject<PlayerRecordsHandler>()
     val addRecordHandler by inject<AddRecordHandler>()
+    val getReplayHandler by inject<GetReplayHandler>()
     val replayChunkHandler by inject<ReplayChunkHandler>()
 
     webSocket("/ws/game") {
@@ -90,6 +91,7 @@ fun Routing.gameServerWsRoute() {
                                 MsgType.WANT_COURSE_TOP -> courseTopHandler.handle(session, envelope)
                                 MsgType.WANT_PLAYER_RECORDS -> playerRecordsHandler.handle(session, envelope)
                                 MsgType.ADD_RECORD -> addRecordHandler.handle(session, envelope)
+                                MsgType.GET_REPLAY -> getReplayHandler.handle(session, envelope)
                                 else -> session.sendError(envelope.msgId, "Unknown msg_type: ${envelope.msgType}")
                             }
                         }.onFailure { e ->

@@ -110,6 +110,25 @@ Admin client          kz-global-api             PostgreSQL
   |◄─ 201 { id, name, accessKey }                  |
 ```
 
+### Admin record delete / patch
+
+```
+Admin client          RecordAdminService        PostgreSQL           BroadcastService
+  |                       |                       |                       |
+  |── DELETE/PATCH ──────►|                       |                       |
+  |   /admin/records/{id} |── snapshot + WR ids   |                       |
+  |                       |── mutate map_record ─►|                       |
+  |                       |── LeaderboardRepair ─►|  (best_* + world_record)
+  |                       |── audit log ─────────►|                       |
+  |◄─ 204 ────────────────|                       |                       |
+  |                       |── emit NewWorldRecord (if WR changed) ──────►|
+  |                       |                       |── MAP_INFO push       |
+  |                       |── DEL_RECORD_NOTIFY (delete/flag) ───────────►|
+  |                       |── prune R2 replays (background)               |
+```
+
+Leaderboard repair runs in the **same transaction** as the admin mutation. Post-commit broadcasts and R2 cleanup are best-effort.
+
 ---
 
 ## Package structure
@@ -284,7 +303,7 @@ Key metrics:
 | `kz_replay_upload_failures_total` | Counter | Failed replay uploads |
 | `kz_ws_auth_failures_total` | Counter | Rejected WS connection attempts |
 | `kz_flagged_records_total` | Counter | Records flagged for review |
-| `kz_record_persist_duration_seconds` | Timer | Time spent in `RecordService.submit` |
+| `kz_record_persist_duration_seconds` | Timer | DB transaction time in `RecordService.persistRecord` |
 | `kz_connected_servers` | Gauge | Live count of connected game servers |
 
 ### Structured logging

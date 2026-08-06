@@ -7,10 +7,13 @@ import kz.global.api.util.uuidV7
 import kz.global.api.ws.*
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.*
+import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.insertIgnore
-import org.jetbrains.exposed.v1.jdbc.upsert
+import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
+import org.jetbrains.exposed.v1.jdbc.update
+import org.jetbrains.exposed.v1.jdbc.upsert
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.TestInstance
@@ -189,5 +192,26 @@ class CourseTopHandlerTest {
         handler.handle(session, envelope("kz_clamp", "nub", limit = 200))
 
         assertEquals(MsgType.COURSE_TOP, sent().single().msgType)
+    }
+
+    @Test
+    fun `handle excludes flagged records from course top`() = runTest {
+        insertPlayerWithBestRecord("STEAM_0:0:1", "Flagged", "kz_flag_top", 10_000L, "uid-flagged", 0, 0)
+        insertPlayerWithBestRecord("STEAM_0:0:2", "Clean", "kz_flag_top", 20_000L, "uid-clean", 0, 0)
+        transaction {
+            val flaggedId = MapRecordsTable.selectAll()
+                .where { MapRecordsTable.localUid eq "uid-flagged" }
+                .single()[MapRecordsTable.id]
+            MapRecordsTable.update({ MapRecordsTable.id eq flaggedId }) {
+                it[flagged] = true
+            }
+        }
+        val (session, sent) = mockSession()
+
+        handler.handle(session, envelope("kz_flag_top", "pro"))
+
+        val entries = sent().single().data.jsonObject["entries"]!!.jsonArray
+        assertEquals(1, entries.size)
+        assertEquals("Clean", entries[0].jsonObject["nickname"]!!.jsonPrimitive.content)
     }
 }

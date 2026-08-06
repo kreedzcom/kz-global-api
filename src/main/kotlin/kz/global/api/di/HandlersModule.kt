@@ -12,5 +12,6 @@ fun handlersModule() = module {
     single { CourseTopHandler(get()) }
     single { PlayerRecordsHandler(get(), get()) }
     single { AddRecordHandler(get(), get()) }
+    single { GetReplayHandler(get(), get()) }
     single { ReplayChunkHandler(get(), get(), get(), get()) }
 }
