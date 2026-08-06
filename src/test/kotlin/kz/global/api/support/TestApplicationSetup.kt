@@ -14,6 +14,8 @@ import kz.global.api.api.*
 import kz.global.api.auth.configureAdminAuth
 import kz.global.api.config.AdminConfig
 import kz.global.api.domain.broadcast.BroadcastService
+import kz.global.api.domain.events.EventLogAdminService
+import kz.global.api.domain.players.PlayerAdminService
 import kz.global.api.domain.players.PlayerBanService
 import kz.global.api.domain.records.LeaderboardRepairService
 import kz.global.api.domain.records.RecordAdminService
@@ -74,7 +76,9 @@ fun ApplicationTestBuilder.setupAdminRoutes(
                 single { AuditLogger() }
                 single<R2Client> { r2Binding }
                 single { testSecurityConfig() }
-                single { PlayerBanService() }
+                single { PlayerBanService(get()) }
+                single { PlayerAdminService() }
+                single { EventLogAdminService() }
                 single { ReplayService(get(), get(), get()) }
                 single { RecordService(get(), get(), get(), get(), get(), get()) }
                 single { LeaderboardRepairService() }
@@ -101,6 +105,7 @@ fun ApplicationTestBuilder.setupAdminRoutes(
             mapTimesRoute()
             playersRoute()
             mapsReplayRoute()
+            eventLogRoute()
         }
     }
 }

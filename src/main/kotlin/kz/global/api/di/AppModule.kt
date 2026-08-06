@@ -5,6 +5,8 @@ import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
 import kz.global.api.config.AppConfig
 import kz.global.api.db.DatabaseFactory
 import kz.global.api.domain.broadcast.BroadcastService
+import kz.global.api.domain.events.EventLogAdminService
+import kz.global.api.domain.players.PlayerAdminService
 import kz.global.api.domain.players.PlayerBanService
 import kz.global.api.domain.records.LeaderboardRepairService
 import kz.global.api.domain.records.RecordAdminService
@@ -34,7 +36,9 @@ fun appModule(config: AppConfig, prometheusRegistry: PrometheusMeterRegistry) = 
     single { AuditLogger() }
     single { ConnectedServersRegistry() }
     single { WsRateLimiters(config.security) }
-    single { PlayerBanService() }
+    single { PlayerBanService(get()) }
+    single { PlayerAdminService() }
+    single { EventLogAdminService() }
     single(named("applicationCoroutineScope")) {
         CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }

@@ -3,6 +3,7 @@ package kz.global.api.ws.handlers
 import kz.global.api.db.tables.PlayersTable
 import org.jetbrains.exposed.v1.jdbc.insert
 import kz.global.api.domain.players.PlayerBanService
+import kz.global.api.events.AuditLogger
 import kz.global.api.support.TestDatabase
 import kz.global.api.support.mockSession
 import kz.global.api.ws.*
@@ -19,7 +20,7 @@ import kotlin.test.*
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class PlayerJoinHandlerTest {
 
-    private val handler = PlayerJoinHandler(PlayerBanService())
+    private val handler = PlayerJoinHandler(PlayerBanService(AuditLogger()))
 
     @BeforeAll
     fun setupClass() {

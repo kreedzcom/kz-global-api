@@ -34,7 +34,7 @@ class RecordServiceTest {
     private val auditLogger = mockk<AuditLogger>(relaxed = true)
     private val eventBus = KzEventBus()
     private val metrics = KzMetrics(SimpleMeterRegistry(), ConnectedServersRegistry())
-    private val banService = PlayerBanService()
+    private val banService = PlayerBanService(AuditLogger())
     private val service = RecordService(eventBus, auditLogger, metrics, banService, testSecurityConfig(), testReplayService())
 
     private var serverId = 0

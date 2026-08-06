@@ -34,7 +34,7 @@ class AddRecordHandlerTest {
         eventBus = KzEventBus(),
         auditLogger = mockk(relaxed = true),
         metrics = KzMetrics(SimpleMeterRegistry(), ConnectedServersRegistry()),
-        playerBanService = PlayerBanService(),
+        playerBanService = PlayerBanService(AuditLogger()),
         security = testSecurityConfig(),
         replayService = testReplayService(),
     )

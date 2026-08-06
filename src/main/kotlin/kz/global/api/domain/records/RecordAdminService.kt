@@ -11,6 +11,7 @@ import kz.global.api.events.AuditLogger
 import kz.global.api.events.KzEvent
 import kz.global.api.events.KzEventBus
 import kz.global.api.metrics.KzMetrics
+import kz.global.api.security.AdminActor
 import kz.global.api.security.WsPayloadValidator
 import kz.global.api.storage.R2Client
 import kz.global.api.util.RecordTimeParser
@@ -114,7 +115,7 @@ class RecordAdminService(
         )
     }
 
-    suspend fun deleteRecord(recordId: Uuid): AdminRecordMutationResult {
+    suspend fun deleteRecord(recordId: Uuid, actor: String? = null): AdminRecordMutationResult {
         val outcome = suspendTransaction {
             val snapshot = loadSnapshot(recordId) ?: return@suspendTransaction null
             val (prevPro, prevNub) = repairService.captureWrIds(snapshot.mapName)
@@ -136,7 +137,10 @@ class RecordAdminService(
             repair = repair,
             sendInvalidationNotify = true,
             auditEvent = "RECORD_DELETED",
-            auditExtra = buildJsonObject { put("record_id", recordId.toString()) },
+            auditExtra = AdminActor.withActor(
+                buildJsonObject { put("record_id", recordId.toString()) },
+                actor,
+            ),
         )
 
         r2Key?.let { key ->
@@ -147,7 +151,7 @@ class RecordAdminService(
         return AdminRecordMutationResult.Deleted(repair, r2Key)
     }
 
-    suspend fun patchRecord(recordId: Uuid, req: PatchRecordRequest): AdminRecordMutationResult {
+    suspend fun patchRecord(recordId: Uuid, req: PatchRecordRequest, actor: String? = null): AdminRecordMutationResult {
         if (req.flagged == null && req.reviewed == null && req.timeMs == null) {
             val exists = suspendTransaction {
                 MapRecordsTable.selectAll().where { MapRecordsTable.id eq recordId }.count() > 0
@@ -193,21 +197,27 @@ class RecordAdminService(
                 repair = repair,
                 sendInvalidationNotify = sendNotify,
                 auditEvent = "RECORD_PATCHED",
-                auditExtra = buildJsonObject {
-                    put("record_id", recordId.toString())
-                    req.flagged?.let { put("flagged", it) }
-                    req.reviewed?.let { put("reviewed", it) }
-                    req.timeMs?.let { put("time_ms", it) }
-                },
+                auditExtra = AdminActor.withActor(
+                    buildJsonObject {
+                        put("record_id", recordId.toString())
+                        req.flagged?.let { put("flagged", it) }
+                        req.reviewed?.let { put("reviewed", it) }
+                        req.timeMs?.let { put("time_ms", it) }
+                    },
+                    actor,
+                ),
             )
         } else {
             auditLogger.log(
                 "RECORD_PATCHED",
                 null,
-                buildJsonObject {
-                    put("record_id", recordId.toString())
-                    req.reviewed?.let { put("reviewed", it) }
-                },
+                AdminActor.withActor(
+                    buildJsonObject {
+                        put("record_id", recordId.toString())
+                        req.reviewed?.let { put("reviewed", it) }
+                    },
+                    actor,
+                ),
             )
         }
 

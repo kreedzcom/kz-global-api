@@ -33,7 +33,7 @@ class RecordServiceReplayRequiredTest {
         KzEventBus(),
         mockk(relaxed = true),
         KzMetrics(SimpleMeterRegistry(), ConnectedServersRegistry()),
-        PlayerBanService(),
+        PlayerBanService(AuditLogger()),
         testSecurityConfig(requireReplayForLeaderboard = true),
         testReplayService(),
     )

@@ -123,6 +123,7 @@ fun Application.module() {
         mapTimesRoute()
         playersRoute()
         mapsReplayRoute()
+        eventLogRoute()
     }
 
 }

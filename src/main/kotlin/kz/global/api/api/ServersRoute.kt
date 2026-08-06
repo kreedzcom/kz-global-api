@@ -6,11 +6,15 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kz.global.api.db.tables.GameServersTable
+import kz.global.api.events.AuditLogger
+import kz.global.api.security.AdminActor
 import kz.global.api.util.toHex
 import kz.global.api.ws.ConnectedServersRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
@@ -42,6 +46,7 @@ data class ConnectedServerEntry(
 
 fun Route.serversRoute() {
     val registry by inject<ConnectedServersRegistry>()
+    val auditLogger by inject<AuditLogger>()
 
     route("/admin/servers") {
         authenticate("admin") {
@@ -71,6 +76,7 @@ fun Route.serversRoute() {
 
             post {
                 val req = call.receive<CreateServerRequest>()
+                val actor = AdminActor.fromCall(call)
                 val keyBytes = ByteArray(16).also { SecureRandom().nextBytes(it) }
 
                 val serverId = suspendTransaction() {
@@ -80,6 +86,17 @@ fun Route.serversRoute() {
                         it[allowedIps] = req.allowedIps
                     }[GameServersTable.id]
                 }
+
+                auditLogger.log(
+                    "SERVER_CREATED",
+                    serverId,
+                    AdminActor.withActor(
+                        buildJsonObject {
+                            put("name", req.name)
+                        },
+                        actor,
+                    ),
+                )
 
                 call.respond(HttpStatusCode.Created, CreateServerResponse(
                     id = serverId,
@@ -97,11 +114,25 @@ fun Route.serversRoute() {
                     return@patch call.respond(HttpStatusCode.BadRequest, "No fields to update")
                 }
 
+                val actor = AdminActor.fromCall(call)
+
                 suspendTransaction {
                     GameServersTable.update({ GameServersTable.id eq serverId }) {
                         it[allowedIps] = req.allowedIps
                     }
                 }
+
+                auditLogger.log(
+                    "SERVER_PATCHED",
+                    serverId,
+                    AdminActor.withActor(
+                        buildJsonObject {
+                            put("allowed_ips", req.allowedIps)
+                        },
+                        actor,
+                    ),
+                )
+
                 call.respond(HttpStatusCode.NoContent)
             }
 
@@ -109,12 +140,21 @@ fun Route.serversRoute() {
                 val serverId = call.parameters["id"]?.toIntOrNull()
                     ?: return@delete call.respond(HttpStatusCode.BadRequest, "Invalid id")
 
+                val actor = AdminActor.fromCall(call)
+
                 suspendTransaction {
                     GameServersTable.update({ GameServersTable.id eq serverId }) {
                         it[active] = false
                     }
                 }
                 registry.disconnect(serverId)
+
+                auditLogger.log(
+                    "SERVER_DEACTIVATED",
+                    serverId,
+                    AdminActor.withActor(buildJsonObject {}, actor),
+                )
+
                 call.respond(HttpStatusCode.NoContent)
             }
         }

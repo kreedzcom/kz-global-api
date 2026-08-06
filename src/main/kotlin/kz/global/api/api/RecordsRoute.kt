@@ -9,6 +9,7 @@ import kz.global.api.domain.records.AdminRecordFilters
 import kz.global.api.domain.records.AdminRecordMutationResult
 import kz.global.api.domain.records.RecordAdminService
 import kz.global.api.domain.replays.ReplayService
+import kz.global.api.security.AdminActor
 import kz.global.api.security.WsPayloadValidator
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -102,7 +103,8 @@ fun Route.recordsRoute() {
                 }
 
                 val service = call.getKoin().get<RecordAdminService>()
-                when (service.patchRecord(recordId, req)) {
+                val actor = AdminActor.fromCall(call)
+                when (service.patchRecord(recordId, req, actor)) {
                     AdminRecordMutationResult.NotFound -> call.respond(HttpStatusCode.NotFound)
                     is AdminRecordMutationResult.Patched -> call.respond(HttpStatusCode.NoContent)
                     is AdminRecordMutationResult.Deleted -> call.respond(HttpStatusCode.NoContent)
@@ -114,7 +116,8 @@ fun Route.recordsRoute() {
                     ?: return@delete call.respond(HttpStatusCode.BadRequest, "Invalid UUID")
 
                 val service = call.getKoin().get<RecordAdminService>()
-                when (service.deleteRecord(recordId)) {
+                val actor = AdminActor.fromCall(call)
+                when (service.deleteRecord(recordId, actor)) {
                     AdminRecordMutationResult.NotFound -> call.respond(HttpStatusCode.NotFound)
                     is AdminRecordMutationResult.Deleted -> call.respond(HttpStatusCode.NoContent)
                     is AdminRecordMutationResult.Patched -> call.respond(HttpStatusCode.NoContent)

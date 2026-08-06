@@ -27,7 +27,7 @@ import kotlin.test.assertTrue
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class RecordServiceBanTest {
 
-    private val banService = PlayerBanService()
+    private val banService = PlayerBanService(AuditLogger())
     private val service = RecordService(
         KzEventBus(),
         mockk(relaxed = true),

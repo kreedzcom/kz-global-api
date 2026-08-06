@@ -35,7 +35,7 @@ class RecordServiceWrRatioTest {
         KzEventBus(),
         mockk(relaxed = true),
         KzMetrics(SimpleMeterRegistry(), ConnectedServersRegistry()),
-        PlayerBanService(),
+        PlayerBanService(AuditLogger()),
         testSecurityConfig(maxWrImprovementRatio = 0.5),
         testReplayService(),
     )

@@ -8,7 +8,7 @@ It provides a centralised, server-authoritative store for runs, leaderboards, an
 The service is written in **Kotlin / Ktor (Netty)** and exposes two distinct surfaces:
 
 - **WebSocket endpoint** (`/ws/game`) — persistent connections from game servers; all real-time game events flow here.
-- **Admin REST API** (`/admin/*`) — management of servers, plugin versions, map minimum times, records, and player bans.
+- **Admin REST API** (`/admin/*`) — management of servers, plugin versions, map minimum times, records, player bans, and read-only audit log access.
 
 ---
 
@@ -312,7 +312,11 @@ Set `LOG_FORMAT=json` to switch Logback to Logstash JSON output, ready for log a
 
 ### Audit log
 
-Every significant mutation (server created, record deleted, plugin cutoff, etc.) is written to the `event_log` table by `AuditLogger` with `event_type` and a JSON payload string, allowing full traceability without an external system. `EventLogRetentionJob` purges rows older than `security.eventLogRetentionDays` (default 90).
+Every significant mutation (server created, record deleted, player banned, plugin cutoff, etc.) is written to the `event_log` table by `AuditLogger` with `event_type` and a JSON payload string, allowing full traceability without an external system. `EventLogRetentionJob` purges rows older than `security.eventLogRetentionDays` (default 90).
+
+Admin clients can read the audit trail via `GET /admin/event-log` (paginated; optional filters: `event_type`, `server_id`).
+
+When proxied through kreedz.com, mutating admin requests may include an optional `X-Admin-Actor` header (staff pseudo, max 64 chars). When present, the actor is stored in the audit payload under `"actor"` for accountability.
 
 ---
 
