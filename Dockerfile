@@ -1,7 +1,7 @@
 FROM gradle:9.5.1-jdk25 AS build
 WORKDIR /app
 COPY . .
-RUN gradle buildFatJar --no-daemon
+RUN chmod +x gradlew && ./gradlew buildFatJar --no-daemon
 
 FROM eclipse-temurin:25-jre-alpine
 RUN apk add --no-cache curl \
