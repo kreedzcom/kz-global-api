@@ -90,7 +90,7 @@ The plugin deletes `kz_global/replays/{map_name}/{local_uid}.krpz` (and `.krpr` 
 ## 5. Replay download on map load
 
 After receiving `HelloAck` or `MapChange` response (`MAP_INFO`):
-1. Check if a local `.krpz` exists for the current map (`kz_pb_find_fastest`).
+1. Check if a local `.krpz` exists for the current map (`kz_pb_find_fastest`). When the map has a pro WR, a nub-only local file is not sufficient — the plugin re-requests until a pro replay is cached or the API reports none available.
 2. If not, send `GET_REPLAY` (9) to the API (deduped — one in-flight request per map).
 3. On receiving `GET_REPLAY_ACK`, download, validate, save, and parse the replay.
 

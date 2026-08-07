@@ -181,6 +181,36 @@ class ReplayServiceDbTest {
     }
 
     @Test
+    fun `getWrReplayPresignedUrl skips nub when pro WR exists without replay`() = runTest {
+        val nubId = insertRecord("kz_pro_no_replay", "uid-nub")
+        val proId = insertRecord("kz_pro_no_replay", "uid-pro")
+        transaction {
+            MapRecordsTable.update({ MapRecordsTable.id eq nubId }) {
+                it[gochecks] = 2
+                it[replayR2Key] = "replays/nub.krpz"
+            }
+            MapRecordsTable.update({ MapRecordsTable.id eq proId }) {
+                it[gochecks] = 0
+            }
+            WorldRecordsTable.insert {
+                it[mapName] = "kz_pro_no_replay"
+                it[category] = "nub"
+                it[WorldRecordsTable.recordId] = nubId
+            }
+            WorldRecordsTable.insert {
+                it[mapName] = "kz_pro_no_replay"
+                it[category] = "pro"
+                it[WorldRecordsTable.recordId] = proId
+            }
+        }
+
+        val result = service.getWrReplayPresignedUrl("kz_pro_no_replay")
+
+        assertNull(result)
+        assertTrue(r2.presignCalls.isEmpty())
+    }
+
+    @Test
     fun `getWrReplayPresignedUrl prefers pro WR replay over nub`() = runTest {
         val nubId = insertRecord("kz_both", "uid-nub")
         val proId = insertRecord("kz_both", "uid-pro")

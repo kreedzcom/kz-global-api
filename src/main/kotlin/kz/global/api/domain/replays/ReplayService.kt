@@ -253,14 +253,23 @@ class ReplayService(
     }
 
     suspend fun getWrReplayPresignedUrl(mapName: String): WrReplayUrl? = withContext(ioDispatcher) {
-        for (category in listOf("pro", "nub")) {
-            val record = findWrReplayRecord(mapName, category) ?: continue
-            val url = r2Client.presignedGetUrl(record.r2Key)
+        findWrReplayRecord(mapName, "pro")?.let { record ->
             return@withContext WrReplayUrl(
-                url = url,
+                url = r2Client.presignedGetUrl(record.r2Key),
                 localUid = record.localUid,
                 mapName = mapName,
-                category = category,
+                category = "pro",
+            )
+        }
+        if (proWrExists(mapName)) {
+            return@withContext null
+        }
+        findWrReplayRecord(mapName, "nub")?.let { record ->
+            return@withContext WrReplayUrl(
+                url = r2Client.presignedGetUrl(record.r2Key),
+                localUid = record.localUid,
+                mapName = mapName,
+                category = "nub",
             )
         }
         null
@@ -294,6 +303,7 @@ class ReplayService(
                     .where {
                         (WorldRecordsTable.mapName eq mapName) and
                             (WorldRecordsTable.category eq category) and
+                            (MapRecordsTable.flagged eq false) and
                             MapRecordsTable.replayR2Key.isNotNull()
                     }
                     .singleOrNull()
@@ -303,6 +313,20 @@ class ReplayService(
                     }
             }
         }
+
+    private suspend fun proWrExists(mapName: String): Boolean = withContext(ioDispatcher) {
+        suspendTransaction {
+            (WorldRecordsTable innerJoin MapRecordsTable)
+                .select(WorldRecordsTable.recordId)
+                .where {
+                    (WorldRecordsTable.mapName eq mapName) and
+                        (WorldRecordsTable.category eq "pro") and
+                        (MapRecordsTable.flagged eq false)
+                }
+                .limit(1)
+                .any()
+        }
+    }
 
     private suspend fun findWrReplayKey(mapName: String, category: String): String? =
         withContext(ioDispatcher) {

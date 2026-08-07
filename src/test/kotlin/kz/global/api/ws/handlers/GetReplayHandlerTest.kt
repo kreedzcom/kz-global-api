@@ -91,6 +91,60 @@ class GetReplayHandlerTest {
     }
 
     @Test
+    fun `handle returns error when pro WR exists but has no replay`() = runTest {
+        val nubId = uuidV7()
+        val proId = uuidV7()
+        val srvId = serverId
+        val pvId = pluginVersionId
+        transaction {
+            MapsTable.insertIgnore { it[name] = "kz_pro_missing" }
+            PlayersTable.upsert(PlayersTable.steamid) {
+                it[PlayersTable.steamid] = "STEAM_0:0:1"
+                it[lastNickname] = "Player"
+            }
+            MapRecordsTable.insert {
+                it[MapRecordsTable.id] = nubId
+                it[MapRecordsTable.serverId] = srvId
+                it[playerSteamid] = "STEAM_0:0:1"
+                it[mapName] = "kz_pro_missing"
+                it[MapRecordsTable.timeMs] = 30_000L
+                it[MapRecordsTable.checkpoints] = 5
+                it[MapRecordsTable.gochecks] = 2
+                it[MapRecordsTable.localUid] = "1_00030000_steam_nub"
+                it[MapRecordsTable.pluginVersionId] = pvId
+                it[MapRecordsTable.replayR2Key] = "replays/nub.krpz"
+            }
+            MapRecordsTable.insert {
+                it[MapRecordsTable.id] = proId
+                it[MapRecordsTable.serverId] = srvId
+                it[playerSteamid] = "STEAM_0:0:1"
+                it[mapName] = "kz_pro_missing"
+                it[MapRecordsTable.timeMs] = 20_000L
+                it[MapRecordsTable.checkpoints] = 0
+                it[MapRecordsTable.gochecks] = 0
+                it[MapRecordsTable.localUid] = "0_00020000_steam_pro"
+                it[MapRecordsTable.pluginVersionId] = pvId
+            }
+            WorldRecordsTable.insert {
+                it[mapName] = "kz_pro_missing"
+                it[category] = "nub"
+                it[WorldRecordsTable.recordId] = nubId
+            }
+            WorldRecordsTable.insert {
+                it[mapName] = "kz_pro_missing"
+                it[category] = "pro"
+                it[WorldRecordsTable.recordId] = proId
+            }
+        }
+        val (session, sent) = mockSession(1)
+        session.currentMap = "kz_pro_missing"
+
+        handler.handle(session, envelope("kz_pro_missing"))
+
+        assertEquals(MsgType.ERROR, sent().single().msgType)
+    }
+
+    @Test
     fun `handle rejects request for map not matching session`() = runTest {
         insertWrRecord("kz_map_a", "pro", "0_00020000_steam_a", "replays/a.krpz")
         val (session, sent) = mockSession(1)

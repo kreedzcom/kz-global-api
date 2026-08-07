@@ -283,7 +283,7 @@ When a world record changes, the API pushes **`MAP_INFO` (`msg_type` 102)** with
 
 - Rate-limited (same bucket as `WANT_COURSE_TOP`).
 - **`map_name` must match the session's current map** — cross-map requests are rejected with `ERROR`.
-- Returns presigned URL for the **world record replay** only (pro WR preferred, nub fallback).
+- Returns presigned URL for the **world record replay** only. **Pro WR replay is returned when available.** Nub is returned only when the map has no pro WR. If a pro WR exists but its replay is not uploaded yet, the request fails with `ERROR` (no nub fallback).
 
 ### `GET_REPLAY_ACK` (108)
 
