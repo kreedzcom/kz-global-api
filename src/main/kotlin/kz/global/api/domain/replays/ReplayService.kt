@@ -218,6 +218,7 @@ class ReplayService(
                     .where {
                         (MapRecordsTable.mapName eq mapName) and
                             categoryFilter and
+                            (MapRecordsTable.flagged eq false) and
                             MapRecordsTable.replayR2Key.isNotNull() and
                             (MapRecordsTable.id notInList top10Ids.toList())
                     }
@@ -353,6 +354,7 @@ class ReplayService(
                     .select(MapRecordsTable.id, MapRecordsTable.replayR2Key)
                     .where {
                         MapRecordsTable.replayR2Key.isNotNull() and
+                            (MapRecordsTable.flagged eq false) and
                             (MapRecordsTable.createdAt less cutoff) and
                             WorldRecordsTable.recordId.isNull()
                     }

@@ -322,6 +322,45 @@ class RecordsRouteTest {
     }
 
     @Test
+    fun `PATCH flagging record preserves replay for admin review`() = testApplication {
+        val r2 = FakeR2Client()
+        setupAdminRoutes(r2Client = r2)
+        val map = "kz_flag_replay"
+        val id = insertRecord(map = map, timeMs = 20_000L, localUid = "uid-wr")
+        val r2Key = "replays/$id.krpz"
+        transaction {
+            MapRecordsTable.update({ MapRecordsTable.id eq id }) {
+                it[MapRecordsTable.replayR2Key] = r2Key
+            }
+            BestProRecordsTable.insert {
+                it[playerSteamid] = steamid
+                it[mapName] = map
+                it[recordId] = id
+            }
+            WorldRecordsTable.insert {
+                it[mapName] = map
+                it[category] = "pro"
+                it[WorldRecordsTable.recordId] = id
+            }
+        }
+
+        val response = client.patch("/admin/records/$id") {
+            header(HttpHeaders.Authorization, adminAuth())
+            contentType(ContentType.Application.Json)
+            setBody("""{"flagged":true}""")
+        }
+
+        assertEquals(HttpStatusCode.NoContent, response.status)
+        assertTrue(r2.deleteCalls.isEmpty())
+        val savedKey = transaction {
+            MapRecordsTable.selectAll()
+                .where { MapRecordsTable.id eq id }
+                .single()[MapRecordsTable.replayR2Key]
+        }
+        assertEquals(r2Key, savedKey)
+    }
+
+    @Test
     fun `PATCH record sets reviewed to true`() = testApplication {
         setupAdminRoutes()
         val id = insertRecord()

@@ -344,6 +344,23 @@ class ReplayServiceDbTest {
     }
 
     @Test
+    fun `gcOldReplays skips flagged records`() = runTest {
+        val flaggedRecord = insertRecord("kz_flagged_gc", "uid-flagged-gc")
+        val r2Key = "replays/$flaggedRecord.krpz"
+        backdateRecord(flaggedRecord, 100)
+        transaction {
+            MapRecordsTable.update({ MapRecordsTable.id eq flaggedRecord }) {
+                it[replayR2Key] = r2Key
+                it[flagged] = true
+            }
+        }
+
+        service.gcOldReplays(daysOld = 90)
+
+        assertTrue(r2.deleteCalls.isEmpty())
+    }
+
+    @Test
     fun `gcOldReplays skips records newer than cutoff`() = runTest {
         val newRecord = insertRecord("kz_new_gc", "uid-new")
         transaction {
@@ -413,6 +430,38 @@ class ReplayServiceDbTest {
                 assertEquals("replays/$id.krpz", MapRecordsTable.selectAll().where { MapRecordsTable.id eq id }.single()[MapRecordsTable.replayR2Key])
             }
             assertNull(MapRecordsTable.selectAll().where { MapRecordsTable.id eq outsideId }.single()[MapRecordsTable.replayR2Key])
+        }
+    }
+
+    @Test
+    fun `pruneReplaysOutsideTop10 keeps replay for flagged records outside top 10`() = runTest {
+        val map = "kz_flagged_prune"
+        val flaggedId = insertRecord(map, "uid-flagged", timeMs = 99_000L)
+        val r2Key = "replays/$flaggedId.krpz"
+        transaction {
+            PlayersTable.upsert(PlayersTable.steamid) {
+                it[PlayersTable.steamid] = "STEAM_0:0:flagged"
+                it[lastNickname] = "flagged"
+            }
+            BestProRecordsTable.insert {
+                it[playerSteamid] = "STEAM_0:0:flagged"
+                it[mapName] = map
+                it[recordId] = flaggedId
+            }
+            MapRecordsTable.update({ MapRecordsTable.id eq flaggedId }) {
+                it[replayR2Key] = r2Key
+                it[flagged] = true
+            }
+        }
+
+        service.pruneReplaysOutsideTop10(map, "pro")
+
+        assertTrue(r2.deleteCalls.isEmpty())
+        transaction {
+            assertEquals(
+                r2Key,
+                MapRecordsTable.selectAll().where { MapRecordsTable.id eq flaggedId }.single()[MapRecordsTable.replayR2Key],
+            )
         }
     }
 
