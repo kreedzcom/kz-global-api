@@ -6,8 +6,8 @@ import org.koin.dsl.module
 fun handlersModule() = module {
     single { HelloHandler(get(), get()) }
     single { MapChangeHandler(get()) }
-    single { PlayerJoinHandler(get()) }
-    single { PlayerLeaveHandler() }
+    single { PlayerJoinHandler(get(), get()) }
+    single { PlayerLeaveHandler(get()) }
     single { MapInfoHandler(get()) }
     single { CourseTopHandler(get()) }
     single { PlayerRecordsHandler(get(), get()) }

@@ -7,6 +7,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.encodeToJsonElement
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Game plugins expect defaulted fields (e.g. `heartbeat_interval` on HELLO_ACK) to appear on the wire. */
 @PublishedApi
@@ -30,10 +31,23 @@ class GameServerSession(
 
     @Volatile var currentMap: String = ""
     private val _players = mutableMapOf<String, ConnectedPlayer>()
+    private val _playerCount = AtomicInteger(0)
     private val mutex = Mutex()
 
-    suspend fun addPlayer(player: ConnectedPlayer) = mutex.withLock { _players[player.steamid] = player }
-    suspend fun removePlayer(steamid: String) = mutex.withLock { _players.remove(steamid) }
+    val playerCount: Int get() = _playerCount.get()
+
+    suspend fun addPlayer(player: ConnectedPlayer) = mutex.withLock {
+        if (_players.put(player.steamid, player) == null) {
+            _playerCount.incrementAndGet()
+        }
+    }
+
+    suspend fun removePlayer(steamid: String) = mutex.withLock {
+        if (_players.remove(steamid) != null) {
+            _playerCount.decrementAndGet()
+        }
+    }
+
     suspend fun players(): List<ConnectedPlayer> = mutex.withLock { _players.values.toList() }
 
     suspend inline fun <reified T> sendJson(msgType: Int, msgId: Long = 0, payload: T) {

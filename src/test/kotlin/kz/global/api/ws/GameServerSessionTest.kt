@@ -52,6 +52,7 @@ class GameServerSessionTest {
         val players = session.players()
         assertEquals(1, players.size)
         assertEquals("NewName", players.single().nickname)
+        assertEquals(1, session.playerCount)
     }
 
     @Test

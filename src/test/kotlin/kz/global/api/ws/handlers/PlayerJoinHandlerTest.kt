@@ -1,11 +1,14 @@
 package kz.global.api.ws.handlers
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import kz.global.api.db.tables.PlayersTable
 import org.jetbrains.exposed.v1.jdbc.insert
 import kz.global.api.domain.players.PlayerBanService
 import kz.global.api.events.AuditLogger
+import kz.global.api.metrics.KzMetrics
 import kz.global.api.support.TestDatabase
 import kz.global.api.support.mockSession
+import kz.global.api.ws.ConnectedServersRegistry
 import kz.global.api.ws.*
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.*
@@ -20,7 +23,9 @@ import kotlin.test.*
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class PlayerJoinHandlerTest {
 
-    private val handler = PlayerJoinHandler(PlayerBanService(AuditLogger()))
+    private lateinit var meterRegistry: SimpleMeterRegistry
+    private lateinit var metrics: KzMetrics
+    private lateinit var handler: PlayerJoinHandler
 
     @BeforeAll
     fun setupClass() {
@@ -30,6 +35,9 @@ class PlayerJoinHandlerTest {
     @BeforeEach
     fun clean() {
         TestDatabase.truncateAll()
+        meterRegistry = SimpleMeterRegistry()
+        metrics = KzMetrics(meterRegistry, ConnectedServersRegistry())
+        handler = PlayerJoinHandler(PlayerBanService(AuditLogger()), metrics)
     }
 
     private fun envelope(payload: PlayerJoinPayload, msgId: Long = 0L) = WsEnvelope(
@@ -107,5 +115,23 @@ class PlayerJoinHandlerTest {
 
         assertTrue(session.players().isEmpty())
         assertTrue(sent().single().data.jsonObject["is_banned"]!!.jsonPrimitive.boolean)
+    }
+
+    @Test
+    fun `handle increments player join metric`() = runTest {
+        val (session, _) = mockSession()
+
+        handler.handle(session, envelope(PlayerJoinPayload("STEAM_0:0:5", "Tester")))
+
+        assertEquals(
+            1.0,
+            meterRegistry.counter(
+                "kz_player_joins_total",
+                "server_id",
+                session.serverId.toString(),
+                "banned",
+                "false",
+            ).count(),
+        )
     }
 }

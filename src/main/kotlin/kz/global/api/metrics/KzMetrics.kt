@@ -3,8 +3,17 @@ package kz.global.api.metrics
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.Gauge
 import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.MultiGauge
+import io.micrometer.core.instrument.Tags
 import io.micrometer.core.instrument.Timer
 import kz.global.api.ws.ConnectedServersRegistry
+
+object RecordRejectReason {
+    const val BANNED = "banned"
+    const val WR_RATIO = "wr_ratio"
+    const val BELOW_MIN_TIME = "below_min_time"
+    const val DUPLICATE = "duplicate"
+}
 
 /**
  * Central registry for all custom KZ business metrics.
@@ -50,9 +59,58 @@ class KzMetrics(
 
     // --- gauges (live state) ------------------------------------------------
 
+    private val playersByServerGauge = MultiGauge.builder("kz_connected_players_by_server")
+        .description("Players currently connected per game server")
+        .register(meterRegistry)
+
     init {
-        Gauge.builder("kz_connected_servers") { serversRegistry.connectedCount() }
+        Gauge.builder("kz_connected_servers") { serversRegistry.connectedCount().toDouble() }
             .description("Number of game servers currently connected via WebSocket")
             .register(meterRegistry)
+
+        Gauge.builder("kz_connected_players") { serversRegistry.connectedPlayerCount().toDouble() }
+            .description("Total players currently connected across all game servers")
+            .register(meterRegistry)
+
+        serversRegistry.setSessionsChangedListener { refreshPlayersByServerGauge() }
+        refreshPlayersByServerGauge()
+    }
+
+    fun recordPlayerJoin(serverId: Int, banned: Boolean) {
+        meterRegistry.counter(
+            "kz_player_joins_total",
+            "server_id",
+            serverId.toString(),
+            "banned",
+            banned.toString(),
+        ).increment()
+        refreshPlayersByServerGauge()
+    }
+
+    fun recordPlayerLeave(serverId: Int) {
+        meterRegistry.counter(
+            "kz_player_leaves_total",
+            "server_id",
+            serverId.toString(),
+        ).increment()
+        refreshPlayersByServerGauge()
+    }
+
+    fun recordRejected(reason: String) {
+        meterRegistry.counter(
+            "kz_records_rejected_total",
+            "reason",
+            reason,
+        ).increment()
+    }
+
+    private fun refreshPlayersByServerGauge() {
+        val rows = serversRegistry.allSessions().map { session ->
+            MultiGauge.Row.of(
+                Tags.of("server_id", session.serverId.toString()),
+                session.playerCount,
+            )
+        }
+        playersByServerGauge.register(rows, true)
     }
 }

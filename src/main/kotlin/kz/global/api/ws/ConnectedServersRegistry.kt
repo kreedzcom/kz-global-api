@@ -23,11 +23,13 @@ class ConnectedServersRegistry {
     fun register(session: GameServerSession) {
         sessions[session.serverId] = session
         log.info("Server {} connected. Total: {}", session.serverId, sessions.size)
+        sessionsChangedListener?.invoke()
     }
 
     fun unregister(serverId: Int) {
         sessions.remove(serverId)
         log.info("Server {} disconnected. Total: {}", serverId, sessions.size)
+        sessionsChangedListener?.invoke()
     }
 
     fun get(serverId: Int): GameServerSession? = sessions[serverId]
@@ -38,6 +40,15 @@ class ConnectedServersRegistry {
         sessions.values.filter { it.currentMap == mapName }
 
     fun connectedCount(): Int = sessions.size
+
+    fun connectedPlayerCount(): Int = sessions.values.sumOf { it.playerCount }
+
+    @Volatile
+    private var sessionsChangedListener: (() -> Unit)? = null
+
+    fun setSessionsChangedListener(listener: (() -> Unit)?) {
+        sessionsChangedListener = listener
+    }
 
     /** Closes a specific server session (e.g. on revoke). */
     suspend fun disconnect(serverId: Int) {
@@ -55,6 +66,7 @@ class ConnectedServersRegistry {
                 .onFailure { e -> log.warn("Failed to close session {}: {}", session.serverId, e.message) }
         }
         sessions.clear()
+        sessionsChangedListener?.invoke()
     }
 
 }

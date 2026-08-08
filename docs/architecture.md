@@ -305,6 +305,11 @@ Key metrics:
 | `kz_flagged_records_total` | Counter | Records flagged for review |
 | `kz_record_persist_duration_seconds` | Timer | DB transaction time in `RecordService.persistRecord` |
 | `kz_connected_servers` | Gauge | Live count of connected game servers |
+| `kz_connected_players` | Gauge | Live count of players connected across all game servers |
+| `kz_connected_players_by_server` | Gauge | Live player count per game server (`server_id` label) |
+| `kz_player_joins_total` | Counter | Player join events (`server_id`, `banned` labels) |
+| `kz_player_leaves_total` | Counter | Player leave events (`server_id` label) |
+| `kz_records_rejected_total` | Counter | Rejected or duplicate run submissions (`reason` label) |
 
 ### Structured logging
 

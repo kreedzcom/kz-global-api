@@ -8,6 +8,7 @@ import kz.global.api.events.AuditLogger
 import kz.global.api.events.KzEvent
 import kz.global.api.events.KzEventBus
 import kz.global.api.metrics.KzMetrics
+import kz.global.api.metrics.RecordRejectReason
 import kz.global.api.util.uuidV7
 import kz.global.api.ws.AddRecordPayload
 import kotlinx.coroutines.CoroutineDispatcher
@@ -54,11 +55,13 @@ class RecordService(
         payload: AddRecordPayload,
     ): RecordResult {
         if (playerBanService.isBanned(payload.steamid)) {
+            metrics.recordRejected(RecordRejectReason.BANNED)
             return RecordResult.Rejected("Player is banned")
         }
 
         val wrRejection = checkWrImprovementRatio(payload)
         if (wrRejection != null) {
+            metrics.recordRejected(RecordRejectReason.WR_RATIO)
             return RecordResult.Rejected(wrRejection)
         }
 
@@ -73,6 +76,14 @@ class RecordService(
             return RecordResult.Accepted(txResult.recordId, txResult.isPb)
         }
         if (txResult is RecordResult.Accepted) {
+            return txResult
+        }
+        if (txResult is RecordResult.Rejected) {
+            metrics.recordRejected(RecordRejectReason.BELOW_MIN_TIME)
+            return txResult
+        }
+        if (txResult is RecordResult.Duplicate) {
+            metrics.recordRejected(RecordRejectReason.DUPLICATE)
             return txResult
         }
         return txResult as RecordResult

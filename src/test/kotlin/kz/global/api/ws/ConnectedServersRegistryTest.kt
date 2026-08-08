@@ -2,6 +2,7 @@ package kz.global.api.ws
 
 import io.mockk.mockk
 import io.ktor.websocket.*
+import kz.global.api.ws.ConnectedPlayer
 import kotlinx.coroutines.test.runTest
 import kotlin.test.*
 
@@ -49,6 +50,20 @@ class ConnectedServersRegistryTest {
         registry.unregister(1)
 
         assertEquals(1, registry.connectedCount())
+    }
+
+    @Test
+    fun `connectedPlayerCount sums players across sessions`() = runTest {
+        val registry = ConnectedServersRegistry()
+        val first = session(1)
+        val second = session(2)
+        registry.register(first)
+        registry.register(second)
+        first.addPlayer(ConnectedPlayer("STEAM_0:0:1", "Alpha"))
+        second.addPlayer(ConnectedPlayer("STEAM_0:0:2", "Beta"))
+        second.addPlayer(ConnectedPlayer("STEAM_0:0:3", "Gamma"))
+
+        assertEquals(3, registry.connectedPlayerCount())
     }
 
     @Test

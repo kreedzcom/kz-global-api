@@ -2,6 +2,7 @@ package kz.global.api.ws.handlers
 
 import kz.global.api.db.tables.PlayersTable
 import kz.global.api.domain.players.PlayerBanService
+import kz.global.api.metrics.KzMetrics
 import kz.global.api.security.WsPayloadValidator
 import kz.global.api.ws.*
 import kotlinx.serialization.json.Json
@@ -12,6 +13,7 @@ import kotlin.time.Clock
 
 class PlayerJoinHandler(
     private val playerBanService: PlayerBanService,
+    private val metrics: KzMetrics,
 ) {
 
     private val log = LoggerFactory.getLogger(PlayerJoinHandler::class.java)
@@ -30,6 +32,7 @@ class PlayerJoinHandler(
         }
 
         val isBanned = playerBanService.isBanned(payload.steamid)
+        metrics.recordPlayerJoin(session.serverId, isBanned)
 
         if (!isBanned) {
             val now = Clock.System.now()
