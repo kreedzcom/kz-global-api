@@ -60,8 +60,8 @@ class PluginVersionsRouteTest {
         transaction {
             PluginVersionsTable.insert {
                 it[semver] = "1.0.0"
-                it[checksumLinux] = ByteArray(16)
-                it[checksumWindows] = ByteArray(16)
+                it[checksumLinux] = ByteArray(16) { 0xAA.toByte() }
+                it[checksumWindows] = ByteArray(16) { 0xBB.toByte() }
             }
         }
 
@@ -73,6 +73,8 @@ class PluginVersionsRouteTest {
         val body = Json.parseToJsonElement(response.bodyAsText()).jsonArray
         assertEquals(1, body.size)
         assertEquals("1.0.0", body[0].jsonObject["semver"]!!.jsonPrimitive.content)
+        assertEquals("aa".repeat(16), body[0].jsonObject["checksum_linux"]!!.jsonPrimitive.content)
+        assertEquals("bb".repeat(16), body[0].jsonObject["checksum_windows"]!!.jsonPrimitive.content)
     }
 
     // ─── POST /admin/plugin-versions ─────────────────────────────────────────

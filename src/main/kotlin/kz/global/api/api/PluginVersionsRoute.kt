@@ -7,6 +7,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kz.global.api.db.tables.PluginVersionsTable
 import kz.global.api.util.fromHex
+import kz.global.api.util.toHex
 import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -29,6 +30,8 @@ data class CreatePluginVersionResponse(val id: Int, val semver: String)
 data class PluginVersionEntry(
     val id: Int,
     val semver: String,
+    @SerialName("checksum_linux") val checksumLinux: String,
+    @SerialName("checksum_windows") val checksumWindows: String,
     @SerialName("is_cutoff") val isCutoff: Boolean,
     @SerialName("created_at") val createdAt: String,
 )
@@ -42,6 +45,8 @@ fun Route.pluginVersionsRoute() {
                         PluginVersionEntry(
                             id = row[PluginVersionsTable.id],
                             semver = row[PluginVersionsTable.semver],
+                            checksumLinux = row[PluginVersionsTable.checksumLinux].toHex(),
+                            checksumWindows = row[PluginVersionsTable.checksumWindows].toHex(),
                             isCutoff = row[PluginVersionsTable.isCutoff],
                             createdAt = row[PluginVersionsTable.createdAt].toString(),
                         )
