@@ -47,7 +47,6 @@ class PlayerAdminService {
                 PlayerEntry(
                     steamid = row[PlayersTable.steamid],
                     lastNickname = row[PlayersTable.lastNickname],
-                    ipAddress = row[PlayersTable.ipAddress],
                     firstSeenAt = row[PlayersTable.firstSeenAt].toString(),
                     lastSeenAt = row[PlayersTable.lastSeenAt].toString(),
                     isBanned = row[PlayersTable.isBanned],

@@ -71,6 +71,7 @@ class PlayersRouteTest {
         assertTrue(body.contains("Target"))
         assertTrue(body.contains("OtherPlayer"))
         assertTrue(body.contains("\"total_count\":2"))
+        assertFalse(body.contains("ip_address"))
     }
 
     @Test

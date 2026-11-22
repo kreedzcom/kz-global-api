@@ -59,7 +59,6 @@ data class MapChangePayload(
 data class PlayerJoinPayload(
     val steamid: String,
     val nickname: String,
-    @SerialName("ip_address") val ipAddress: String? = null,
 )
 
 @Serializable

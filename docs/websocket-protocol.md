@@ -163,13 +163,12 @@ In the database, `type` may be stored as a name (`bhop`, `climb`, …) or numeri
 
 ```json
 {
-  "steamid":    "STEAM_0:0:12345",
-  "nickname":   "xX_speedrunner_Xx",
-  "ip_address": "198.51.100.10"
+  "steamid":  "STEAM_0:0:12345",
+  "nickname": "xX_speedrunner_Xx"
 }
 ```
 
-`ip_address` is optional. The API upserts the player row and responds with:
+The API upserts the player row and responds with:
 
 ```json
 { "steamid": "STEAM_0:0:12345", "is_banned": false }

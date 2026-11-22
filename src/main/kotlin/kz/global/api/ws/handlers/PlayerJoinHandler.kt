@@ -40,7 +40,6 @@ class PlayerJoinHandler(
                 PlayersTable.upsert(PlayersTable.steamid) {
                     it[steamid] = payload.steamid
                     it[lastNickname] = payload.nickname
-                    it[ipAddress] = payload.ipAddress
                     it[lastSeenAt] = now
                 }
             }

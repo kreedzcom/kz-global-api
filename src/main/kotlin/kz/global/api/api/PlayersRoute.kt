@@ -23,7 +23,6 @@ data class BanPlayerRequest(
 data class PlayerEntry(
     val steamid: String,
     @SerialName("last_nickname") val lastNickname: String,
-    @SerialName("ip_address") val ipAddress: String? = null,
     @SerialName("first_seen_at") val firstSeenAt: String,
     @SerialName("last_seen_at") val lastSeenAt: String,
     @SerialName("is_banned") val isBanned: Boolean,

@@ -61,15 +61,14 @@ The `HELLO` handler validates `plugin_version` + `plugin_checksum` (Linux) again
 
 ---
 
-### `player` (V1)
+### `player` (V1, `ip_address` dropped V6)
 
-A Steam player seen on at least one server.
+A Steam player seen on at least one server. Player IP addresses are not stored.
 
 | Column | Type | Notes |
 |--------|------|-------|
 | `steamid` | `VARCHAR(32)` PK | Steam2 ID format, e.g. `STEAM_0:0:12345` |
 | `last_nickname` | `VARCHAR(64)` NOT NULL | Updated on every `PLAYER_JOIN` |
-| `ip_address` | `VARCHAR(45)` | Optional; last known IP |
 | `first_seen_at` | `TIMESTAMPTZ` NOT NULL | |
 | `last_seen_at` | `TIMESTAMPTZ` NOT NULL | |
 | `is_banned` | `BOOLEAN` NOT NULL DEFAULT `false` | When `true`, `ADD_RECORD` is rejected and join ack reports banned (V5) |

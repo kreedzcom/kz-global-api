@@ -50,7 +50,7 @@ class PlayerJoinHandlerTest {
     fun `handle upserts player into the database`() = runTest {
         val (session, _) = mockSession()
 
-        handler.handle(session, envelope(PlayerJoinPayload("STEAM_0:0:1", "SpeedRunner", "1.2.3.4")))
+        handler.handle(session, envelope(PlayerJoinPayload("STEAM_0:0:1", "SpeedRunner")))
 
         val player = transaction {
             PlayersTable.selectAll()
@@ -59,6 +59,29 @@ class PlayerJoinHandlerTest {
         }
         assertNotNull(player)
         assertEquals("SpeedRunner", player[PlayersTable.lastNickname])
+    }
+
+    @Test
+    fun `handle ignores ip_address on join`() = runTest {
+        val (session, _) = mockSession()
+        val env = WsEnvelope(
+            msgType = MsgType.PLAYER_JOIN,
+            data = buildJsonObject {
+                put("steamid", "STEAM_0:0:7")
+                put("nickname", "LegacyPlugin")
+                put("ip_address", "198.51.100.10")
+            },
+        )
+
+        handler.handle(session, env)
+
+        val player = transaction {
+            PlayersTable.selectAll()
+                .where { PlayersTable.steamid eq "STEAM_0:0:7" }
+                .singleOrNull()
+        }
+        assertNotNull(player)
+        assertEquals("LegacyPlugin", player[PlayersTable.lastNickname])
     }
 
     @Test
