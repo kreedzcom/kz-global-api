@@ -60,7 +60,15 @@ class PlayerRecordsHandlerTest {
         data = Json.encodeToJsonElement(WantPlayerRecordsPayload(steamid, map)),
     )
 
-    private fun insertRecord(map: String, timeMs: Long, checkpoints: Int, gochecks: Int, localUid: String, flagged: Boolean = false) {
+    private fun insertRecord(
+        map: String,
+        timeMs: Long,
+        checkpoints: Int,
+        gochecks: Int,
+        localUid: String,
+        flagged: Boolean = false,
+        leaderboardPending: Boolean = false,
+    ) {
         val id = uuidV7()
         val srvId = serverId
         val pvId = pluginVersionId
@@ -78,6 +86,7 @@ class PlayerRecordsHandlerTest {
                 it[MapRecordsTable.localUid] = localUid
                 it[MapRecordsTable.pluginVersionId] = pvId
                 it[MapRecordsTable.flagged] = flagged
+                it[MapRecordsTable.leaderboardPending] = leaderboardPending
             }
         }
     }
@@ -117,6 +126,19 @@ class PlayerRecordsHandlerTest {
     fun `handle excludes flagged records`() = runTest {
         insertRecord("kz_canyon", 20_000L, 0, 0, "uid-ok", flagged = false)
         insertRecord("kz_canyon", 25_000L, 0, 0, "uid-flagged", flagged = true)
+        val (session, sent) = mockSession()
+
+        handler.handle(session, envelope("kz_canyon"))
+
+        val records = sent().single().data.jsonObject["records"]!!.jsonArray
+        assertEquals(1, records.size)
+        assertEquals(20_000L, records[0].jsonObject["time_ms"]!!.jsonPrimitive.long)
+    }
+
+    @Test
+    fun `handle excludes leaderboard pending records`() = runTest {
+        insertRecord("kz_canyon", 20_000L, 0, 0, "uid-live")
+        insertRecord("kz_canyon", 25_000L, 0, 0, "uid-pending", leaderboardPending = true)
         val (session, sent) = mockSession()
 
         handler.handle(session, envelope("kz_canyon"))

@@ -33,6 +33,9 @@ replay_pid*
 build/
 .gradle/
 
+# IDE compile output (Eclipse / Java language server)
+bin/
+
 # IntelliJ IDEA
 .idea/
 *.iml

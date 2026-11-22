@@ -16,6 +16,7 @@ micrometer-prometheus = "1.14.6"
 logstash-logback-encoder = "8.0"
 janino = "3.1.12"
 mockk = "1.14.0"
+zstd-jni = "1.5.7-4"
 
 [libraries]
 # Ktor server
@@ -59,6 +60,8 @@ koin-test = { module = "io.insert-koin:koin-test", version.ref = "koin" }
 # AWS SDK for Kotlin (S3-compatible — Cloudflare R2)
 aws-bom = { module = "aws.sdk.kotlin:bom", version.ref = "aws-sdk-kotlin" }
 aws-s3 = { module = "aws.sdk.kotlin:s3", version.ref = "aws-sdk-kotlin" }
+
+zstd-jni = { module = "com.github.luben:zstd-jni", version.ref = "zstd-jni" }
 
 # Logging
 logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }

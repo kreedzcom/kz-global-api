@@ -27,6 +27,7 @@ data class RecordEntry(
     val checkpoints: Int,
     val gochecks: Int,
     val flagged: Boolean,
+    @SerialName("flag_reason") val flagReason: String? = null,
     val reviewed: Boolean,
     @SerialName("has_replay") val hasReplay: Boolean,
     @SerialName("created_at") val createdAt: String,

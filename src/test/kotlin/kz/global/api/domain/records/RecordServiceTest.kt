@@ -95,7 +95,7 @@ class RecordServiceTest {
         val result = service.submit(serverId, pluginVersionId, payload)
 
         assertIs<RecordResult.Accepted>(result)
-        assertTrue(result.isPb)
+        assertFalse(result.isPb)
     }
 
     @Test
@@ -105,7 +105,7 @@ class RecordServiceTest {
         val result = service.submit(serverId, pluginVersionId, payload)
 
         assertIs<RecordResult.Accepted>(result)
-        assertTrue(result.isPb)
+        assertFalse(result.isPb)
     }
 
     @Test
@@ -120,8 +120,9 @@ class RecordServiceTest {
         )
 
         val result = service.submit(serverId, pluginVersionId, payload)
-
         assertIs<RecordResult.Accepted>(result)
+        assertTrue(service.finalizePendingLeaderboard(payload.localUid))
+
         transaction {
             assertNotNull(
                 WorldRecordsTable.selectAll()
@@ -161,8 +162,9 @@ class RecordServiceTest {
         )
 
         val result = service.submit(serverId, pluginVersionId, payload)
-
         assertIs<RecordResult.Accepted>(result)
+        assertTrue(service.finalizePendingLeaderboard(payload.localUid))
+
         transaction {
             assertNotNull(
                 WorldRecordsTable.selectAll()
@@ -235,6 +237,7 @@ class RecordServiceTest {
         val payload = AddRecordPayload(steamid, "kz_wr", 20_000L, "uid-wr", 0, 0)
 
         service.submit(serverId, pluginVersionId, payload)
+        assertTrue(service.finalizePendingLeaderboard(payload.localUid))
 
         transaction {
             assertNull(
@@ -255,6 +258,7 @@ class RecordServiceTest {
         val payload = AddRecordPayload(steamid, "kz_nub", 40_000L, "uid-nub-wr", 10, 3)
 
         service.submit(serverId, pluginVersionId, payload)
+        assertTrue(service.finalizePendingLeaderboard(payload.localUid))
 
         transaction {
             assertNotNull(
@@ -276,6 +280,7 @@ class RecordServiceTest {
     fun `faster run replaces world record`() = runTest {
         val slow = AddRecordPayload(steamid, "kz_race", 50_000L, "uid-slow", 0, 0)
         service.submit(serverId, pluginVersionId, slow)
+        assertTrue(service.finalizePendingLeaderboard(slow.localUid))
         val steamid2 = "STEAM_0:0:99999"
         transaction {
             PlayersTable.upsert(PlayersTable.steamid) {
@@ -286,6 +291,7 @@ class RecordServiceTest {
         val fast = AddRecordPayload(steamid2, "kz_race", 30_000L, "uid-fast", 0, 0)
 
         val fastResult = service.submit(serverId, pluginVersionId, fast) as RecordResult.Accepted
+        assertTrue(service.finalizePendingLeaderboard(fast.localUid))
 
         transaction {
             val wr = WorldRecordsTable.selectAll()
@@ -299,6 +305,7 @@ class RecordServiceTest {
     fun `slower run does not replace world record`() = runTest {
         val fast = AddRecordPayload(steamid, "kz_hold", 20_000L, "uid-hold-fast", 0, 0)
         val fastResult = service.submit(serverId, pluginVersionId, fast) as RecordResult.Accepted
+        assertTrue(service.finalizePendingLeaderboard(fast.localUid))
         val steamid2 = "STEAM_0:0:77777"
         transaction {
             PlayersTable.upsert(PlayersTable.steamid) {
@@ -309,9 +316,16 @@ class RecordServiceTest {
         val slow = AddRecordPayload(steamid2, "kz_hold", 40_000L, "uid-hold-slow", 0, 0)
 
         val slowResult = service.submit(serverId, pluginVersionId, slow) as RecordResult.Accepted
+        assertTrue(service.finalizePendingLeaderboard(slow.localUid))
 
-        assertTrue(slowResult.isPb) // first run for this player — still a PB
         transaction {
+            val slowBest = BestProRecordsTable.selectAll()
+                .where {
+                    (BestProRecordsTable.playerSteamid eq steamid2) and
+                        (BestProRecordsTable.mapName eq "kz_hold")
+                }
+                .single()
+            assertEquals(slowResult.recordId, slowBest[BestProRecordsTable.recordId])
             val wr = WorldRecordsTable.selectAll()
                 .where { (WorldRecordsTable.mapName eq "kz_hold") and (WorldRecordsTable.category eq "pro") }
                 .single()
@@ -323,12 +337,20 @@ class RecordServiceTest {
     fun `pro run slower than player nub run does not overwrite nub best`() = runTest {
         val nub = AddRecordPayload(steamid, "kz_mix", 20_000L, "uid-mix-nub", 8, 5)
         val nubResult = service.submit(serverId, pluginVersionId, nub) as RecordResult.Accepted
+        assertTrue(service.finalizePendingLeaderboard(nub.localUid))
         val pro = AddRecordPayload(steamid, "kz_mix", 25_000L, "uid-mix-pro", 0, 0)
 
         val proResult = service.submit(serverId, pluginVersionId, pro) as RecordResult.Accepted
+        assertTrue(service.finalizePendingLeaderboard(pro.localUid))
 
-        assertTrue(proResult.isPb) // first pro run = PB for pro
         transaction {
+            val proBest = BestProRecordsTable.selectAll()
+                .where {
+                    (BestProRecordsTable.playerSteamid eq steamid) and
+                        (BestProRecordsTable.mapName eq "kz_mix")
+                }
+                .single()
+            assertEquals(proResult.recordId, proBest[BestProRecordsTable.recordId])
             val nubBest = BestNubRecordsTable.selectAll()
                 .where {
                     (BestNubRecordsTable.playerSteamid eq steamid) and

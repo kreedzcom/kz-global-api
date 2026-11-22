@@ -2,7 +2,10 @@ package kz.global.api.ws.handlers
 
 import kz.global.api.db.tables.MapRecordsTable
 import kz.global.api.domain.records.RecordService
+import kz.global.api.domain.replays.KrpReplayValidator
+import kz.global.api.domain.replays.KrpValidation
 import kz.global.api.domain.replays.ReplayAssemblyResult
+import kz.global.api.domain.replays.ReplayIdentity
 import kz.global.api.domain.replays.ReplayService
 import kz.global.api.domain.replays.TOP_REPLAY_COUNT
 import kz.global.api.metrics.KzMetrics
@@ -19,6 +22,7 @@ import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 import org.slf4j.LoggerFactory
+import kotlin.uuid.Uuid
 
 class ReplayChunkHandler(
     private val replayService: ReplayService,
@@ -87,34 +91,77 @@ class ReplayChunkHandler(
                 val recordId = recordRow[MapRecordsTable.id]
                 val mapName = recordRow[MapRecordsTable.mapName]
                 val category = replayService.categoryForGochecks(recordRow[MapRecordsTable.gochecks])
+                val identity = ReplayIdentity(
+                    steamId = recordRow[MapRecordsTable.playerSteamid],
+                    mapName = mapName,
+                    checkpoints = recordRow[MapRecordsTable.checkpoints],
+                    gochecks = recordRow[MapRecordsTable.gochecks],
+                )
 
                 session.socket.launch {
-                    runCatching {
-                        recordService.finalizePendingLeaderboard(chunk.localUid)
-
-                        if (replayService.isRecordInTop10(recordId, mapName, category)) {
-                            replayService.storeReplay(recordId, chunk.localUid, assembled)
-                            log.info("Server {}: replay stored for record {}", session.serverId, recordId)
-                        } else {
-                            log.info(
-                                "Server {}: replay skipped for record {} (outside top {})",
-                                session.serverId,
-                                recordId,
-                                TOP_REPLAY_COUNT,
-                            )
-                        }
-                        replayService.pruneReplaysOutsideTop10(mapName, category)
+                    when (val validation = KrpReplayValidator.validate(assembled, identity)) {
+                        is KrpValidation.Rejected -> rejectReplay(session, chunk.localUid, recordId, assembled, validation.reason)
+                        is KrpValidation.Accepted -> acceptReplay(session, chunk.localUid, recordId, mapName, category, assembled)
                     }
-                        .onSuccess {
-                            session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = true))
-                        }
-                        .onFailure { e ->
-                            metrics.replayUploadFailures.increment()
-                            log.error("Server {}: failed to store replay for {}: {}", session.serverId, recordId, e.message)
-                            session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = false))
-                        }
                 }
             }
+        }
+    }
+
+    private suspend fun acceptReplay(
+        session: GameServerSession,
+        localUid: String,
+        recordId: Uuid,
+        mapName: String,
+        category: String,
+        assembled: ByteArray,
+    ) {
+        runCatching {
+            recordService.finalizePendingLeaderboard(localUid)
+
+            if (replayService.isRecordInTop10(recordId, mapName, category)) {
+                replayService.storeReplay(recordId, localUid, assembled)
+                log.info("Server {}: replay stored for record {}", session.serverId, recordId)
+            } else {
+                log.info(
+                    "Server {}: replay skipped for record {} (outside top {})",
+                    session.serverId,
+                    recordId,
+                    TOP_REPLAY_COUNT,
+                )
+            }
+            replayService.pruneReplaysOutsideTop10(mapName, category)
+        }
+            .onSuccess {
+                session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = localUid, status = true))
+            }
+            .onFailure { e ->
+                metrics.replayUploadFailures.increment()
+                log.error("Server {}: failed to store replay for {}: {}", session.serverId, recordId, e.message)
+                session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = localUid, status = false))
+            }
+    }
+
+    private suspend fun rejectReplay(
+        session: GameServerSession,
+        localUid: String,
+        recordId: Uuid,
+        assembled: ByteArray,
+        reason: String,
+    ) {
+        runCatching {
+            recordService.flagInvalidReplay(localUid, reason)
+            runCatching { replayService.storeReplay(recordId, localUid, assembled) }
+                .onFailure { e ->
+                    metrics.replayUploadFailures.increment()
+                    log.error("Server {}: failed to store flagged replay for {}: {}", session.serverId, recordId, e.message)
+                }
+            log.info("Server {}: replay flagged for record {}: {}", session.serverId, recordId, reason)
+            session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = localUid, status = true))
+        }.onFailure { e ->
+            metrics.replayUploadFailures.increment()
+            log.error("Server {}: failed to flag replay for {}: {}", session.serverId, recordId, e.message)
+            session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = localUid, status = false))
         }
     }
 

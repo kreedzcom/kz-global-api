@@ -31,6 +31,12 @@ sealed class RecordResult {
     data class Rejected(val reason: String) : RecordResult()
 }
 
+private sealed class FlagOutcome {
+    data object Missing : FlagOutcome()
+    data object AlreadyFlagged : FlagOutcome()
+    data class Flagged(val recordId: Uuid, val serverId: Int) : FlagOutcome()
+}
+
 private data class LeaderboardResult(
     val recordId: Uuid,
     val isPb: Boolean,
@@ -67,14 +73,6 @@ class RecordService(
 
         val txResult = persistRecord(serverId, pluginVersionId, payload)
 
-        if (txResult is LeaderboardResult) {
-            emitEvents(txResult, payload, serverId)
-            replayService.pruneReplaysOutsideTop10(
-                payload.mapName,
-                replayService.categoryForGochecks(payload.gochecks),
-            )
-            return RecordResult.Accepted(txResult.recordId, txResult.isPb)
-        }
         if (txResult is RecordResult.Accepted) {
             return txResult
         }
@@ -97,6 +95,7 @@ class RecordService(
                 .singleOrNull()
                 ?: return@suspendTransaction null
 
+            if (row[MapRecordsTable.flagged]) return@suspendTransaction null
             if (!row[MapRecordsTable.leaderboardPending]) return@suspendTransaction null
 
             val recordId = row[MapRecordsTable.id]
@@ -128,6 +127,61 @@ class RecordService(
             replayService.categoryForGochecks(finalized.second.gochecks),
         )
         true
+    }
+
+    suspend fun flagInvalidReplay(localUid: String, reason: String): Boolean = withContext(ioDispatcher) {
+        val outcome = suspendTransaction {
+            val row = MapRecordsTable
+                .selectAll()
+                .where { MapRecordsTable.localUid eq localUid }
+                .singleOrNull()
+                ?: return@suspendTransaction FlagOutcome.Missing
+
+            if (row[MapRecordsTable.flagged]) {
+                return@suspendTransaction FlagOutcome.AlreadyFlagged
+            }
+
+            val recordId = row[MapRecordsTable.id]
+            val wasPending = row[MapRecordsTable.leaderboardPending]
+            val serverId = row[MapRecordsTable.serverId]
+
+            MapRecordsTable.update({ MapRecordsTable.id eq recordId }) {
+                it[flagged] = true
+                it[flagReason] = reason
+                it[leaderboardPending] = false
+            }
+
+            if (!wasPending) {
+                LeaderboardRepairService().repairForRecord(
+                    RecordSnapshot(
+                        id = recordId,
+                        playerSteamid = row[MapRecordsTable.playerSteamid],
+                        mapName = row[MapRecordsTable.mapName],
+                        timeMs = row[MapRecordsTable.timeMs],
+                        gochecks = row[MapRecordsTable.gochecks],
+                        localUid = localUid,
+                        flagged = true,
+                        replayR2Key = row[MapRecordsTable.replayR2Key],
+                    ),
+                    invalidated = true,
+                )
+            }
+            FlagOutcome.Flagged(recordId, serverId)
+        }
+
+        when (outcome) {
+            FlagOutcome.Missing -> false
+            FlagOutcome.AlreadyFlagged -> true
+            is FlagOutcome.Flagged -> {
+                metrics.flaggedRecords.increment()
+                auditLogger.log("RECORD_FLAGGED", outcome.serverId, buildJsonObject {
+                    put("record_id", outcome.recordId.toString())
+                    put("local_uid", localUid)
+                    put("reason", reason)
+                })
+                true
+            }
+        }
     }
 
     private suspend fun checkWrImprovementRatio(payload: AddRecordPayload): String? {
@@ -199,7 +253,6 @@ class RecordService(
                 }
 
                 val recordId = uuidV7()
-                val deferLeaderboard = security.requireReplayForLeaderboard
 
                 MapRecordsTable.insert {
                     it[id] = recordId
@@ -211,41 +264,18 @@ class RecordService(
                     it[gochecks] = payload.gochecks
                     it[localUid] = payload.localUid
                     it[MapRecordsTable.pluginVersionId] = pluginVersionId
-                    it[leaderboardPending] = deferLeaderboard
+                    it[leaderboardPending] = true
                 }
-
-                if (deferLeaderboard) {
-                    log.info(
-                        "Accepted (leaderboard pending replay): {} record={} map={} time={}ms",
-                        payload.steamid,
-                        recordId,
-                        payload.mapName,
-                        payload.timeMs,
-                    )
-                    metrics.recordsSubmitted.increment()
-                    return@suspendTransaction RecordResult.Accepted(recordId, isPb = false)
-                }
-
-                val (isPb, isWrNub, isWrPro) = applyLeaderboardUpdates(
-                    payload.steamid,
-                    payload.mapName,
-                    recordId,
-                    payload.timeMs,
-                    payload.gochecks,
-                )
 
                 log.info(
-                    "Accepted: {} record={} map={} time={}ms checkpoints={} gochecks={}",
+                    "Accepted (leaderboard pending replay): {} record={} map={} time={}ms",
                     payload.steamid,
                     recordId,
                     payload.mapName,
                     payload.timeMs,
-                    payload.checkpoints,
-                    payload.gochecks,
                 )
                 metrics.recordsSubmitted.increment()
-                if (isWrNub || isWrPro) metrics.worldRecords.increment()
-                LeaderboardResult(recordId, isPb, isWrNub, isWrPro)
+                RecordResult.Accepted(recordId, isPb = false)
             }.also {
                 sample.stop(metrics.recordPersistLatency)
             }

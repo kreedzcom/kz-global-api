@@ -9,6 +9,7 @@ data class SecurityConfig(
     val maxReplayBytes: Long,
     val maxConcurrentReplayUploadsPerServer: Int,
     val replayUploadTtlMinutes: Long,
+    /** Kept so existing deployments can still set the env var. Leaderboards always wait for a replay. */
     val requireReplayForLeaderboard: Boolean,
     val wsUpgradePerIpPerMinute: Int,
     val addRecordPerServerPerMinute: Int,

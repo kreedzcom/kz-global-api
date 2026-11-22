@@ -43,6 +43,7 @@ dependencies {
     implementation(libs.micrometer.registry.prometheus)
     implementation(platform(libs.aws.bom))
     implementation(libs.aws.s3)
+    implementation(libs.zstd.jni)
 
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.ktor.client.cio)

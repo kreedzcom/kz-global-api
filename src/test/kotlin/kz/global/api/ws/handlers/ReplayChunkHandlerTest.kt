@@ -6,6 +6,7 @@ import kz.global.api.domain.players.PlayerBanService
 import kz.global.api.domain.records.RecordService
 import kz.global.api.config.R2Config
 import kz.global.api.domain.replays.FakeR2Client
+import kz.global.api.domain.replays.KrpFixtures
 import kz.global.api.domain.replays.ReplayService
 import kz.global.api.storage.R2Client
 import kz.global.api.domain.replays.ReplayServiceTest
@@ -176,7 +177,7 @@ class ReplayChunkHandlerTest {
         insertBestPro(steamid, "kz_ok", recordId)
         val (session, sent) = mockSession(serverId)
         val uid = "uid-ok"
-        val payload = ReplayServiceTest.ZSTD_MAGIC + ByteArray(16) { it.toByte() }
+        val payload = replayFor("kz_ok")
 
         handler.handle(session, ReplayServiceTest.buildChunk(uid, payload, 0, 1))
 
@@ -208,7 +209,7 @@ class ReplayChunkHandlerTest {
         val failId = insertRecord(serverId, "kz_fail", "uid-store-fail")
         insertBestPro(steamid, "kz_fail", failId)
         val (session, sent) = mockSession(serverId)
-        val payload = ReplayServiceTest.ZSTD_MAGIC + ByteArray(8)
+        val payload = replayFor("kz_fail")
 
         failingHandler.handle(session, ReplayServiceTest.buildChunk("uid-store-fail", payload, 0, 1))
 
@@ -243,7 +244,7 @@ class ReplayChunkHandlerTest {
         )
         val recordId = insertRecord(serverId, "kz_pending", "uid-pending-lb", leaderboardPending = true)
         val (session, sent) = mockSession(serverId)
-        val payload = ReplayServiceTest.ZSTD_MAGIC + ByteArray(8)
+        val payload = replayFor("kz_pending")
 
         pendingHandler.handle(session, ReplayServiceTest.buildChunk("uid-pending-lb", payload, 0, 1))
 
@@ -269,7 +270,7 @@ class ReplayChunkHandlerTest {
         insertBestPro("STEAM_0:0:slow", map, slowId)
 
         val (session, sent) = mockSession(serverId)
-        val payload = ReplayServiceTest.ZSTD_MAGIC + ByteArray(8)
+        val payload = replayFor(map)
 
         handler.handle(session, ReplayServiceTest.buildChunk("uid-slow", payload, 0, 1))
 
@@ -283,6 +284,27 @@ class ReplayChunkHandlerTest {
             )
         }
     }
+
+    @Test
+    fun `handle flags an invalid replay, stores it, and does not promote`() = runTest {
+        val recordId = insertRecord(serverId, "kz_bad", "uid-bad", leaderboardPending = true)
+        val (session, sent) = mockSession(serverId)
+        val payload = ReplayServiceTest.ZSTD_MAGIC + ByteArray(8)
+
+        handler.handle(session, ReplayServiceTest.buildChunk("uid-bad", payload, 0, 1))
+
+        assertTrue(sent().single().data.jsonObject["status"]!!.jsonPrimitive.boolean)
+        assertEquals("replays/$recordId.krpz", r2.putCalls.single().first)
+        transaction {
+            val row = MapRecordsTable.selectAll().where { MapRecordsTable.id eq recordId }.single()
+            assertTrue(row[MapRecordsTable.flagged])
+            assertFalse(row[MapRecordsTable.leaderboardPending])
+            assertEquals("Replay could not be decoded", row[MapRecordsTable.flagReason])
+            assertEquals(0, BestProRecordsTable.selectAll().count())
+        }
+    }
+
+    private fun replayFor(map: String) = KrpFixtures.compress(steamid, map, checkpoints = 0, gochecks = 0)
 
     private fun steamidFor(index: Int) = "STEAM_0:0:top$index"
 

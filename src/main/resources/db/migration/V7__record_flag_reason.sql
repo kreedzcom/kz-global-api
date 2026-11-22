@@ -1,0 +1,2 @@
+ALTER TABLE map_record
+    ADD COLUMN IF NOT EXISTS flag_reason VARCHAR(255);

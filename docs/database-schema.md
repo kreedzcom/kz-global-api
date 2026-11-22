@@ -139,8 +139,9 @@ A single completed run.
 | `local_uid` | `VARCHAR(64)` UNIQUE NOT NULL | Server-generated idempotency key |
 | `replay_r2_key` | `VARCHAR(255)` | R2 object key once replay is uploaded (`replays/{uuid}.krpz`) |
 | `flagged` | `BOOLEAN` NOT NULL DEFAULT `false` | Anti-cheat review flag |
+| `flag_reason` | `VARCHAR(255)` | Why an uploaded replay was flagged (V7). Null until then |
 | `reviewed` | `BOOLEAN` NOT NULL DEFAULT `false` | Set when admin has reviewed the record |
-| `leaderboard_pending` | `BOOLEAN` NOT NULL DEFAULT `false` | `true` = PB/WR not applied until replay stored (V5) |
+| `leaderboard_pending` | `BOOLEAN` NOT NULL DEFAULT `false` | `true` until a replay with a matching header is accepted (V5) |
 | `plugin_version_id` | `INTEGER` NOT NULL → `plugin_version(id)` | Which plugin build submitted it |
 | `created_at` | `TIMESTAMPTZ` NOT NULL | |
 
@@ -207,7 +208,7 @@ Tracks in-flight multi-chunk replay uploads (schema only — current state is he
 
 **UUIDv7 primary keys** — `map_record.id` uses time-ordered UUIDs (v7). This keeps B-tree inserts sequential (no random page splits), embeds creation time, and avoids auto-increment integer overflow at scale.
 
-**Denormalised leaderboard tables** — `best_nub_record`, `best_pro_record`, and `world_record` are write-through caches updated inside the same transaction as `map_record` inserts (via `RecordService`) or admin mutations (via `LeaderboardRepairService` in `RecordAdminService`). Flagged records (`map_record.flagged = true`) are excluded from recompute. This makes leaderboard queries O(1) lookups instead of full aggregations.
+**Denormalised leaderboard tables** — `best_nub_record`, `best_pro_record`, and `world_record` are write-through caches updated when a replay passes validation (`RecordService.finalizePendingLeaderboard`) or on admin mutations (`LeaderboardRepairService` in `RecordAdminService`). Flagged records (`map_record.flagged = true`) are excluded from recompute. This makes leaderboard queries O(1) lookups instead of full aggregations.
 
 **Soft deletes for servers** — `game_server.active = false` instead of `DELETE`. This preserves `map_record` foreign-key integrity and the audit trail.
 

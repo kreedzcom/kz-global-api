@@ -84,7 +84,7 @@ class AddRecordHandlerTest {
 
         val frame = sent().single()
         assertEquals(MsgType.RECORD_ACK, frame.msgType)
-        assertTrue(frame.data.jsonObject["is_pb"]!!.jsonPrimitive.boolean)
+        assertFalse(frame.data.jsonObject["is_pb"]!!.jsonPrimitive.boolean)
     }
 
     @Test

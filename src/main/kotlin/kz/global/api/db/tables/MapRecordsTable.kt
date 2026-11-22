@@ -16,6 +16,7 @@ object MapRecordsTable : Table("map_record") {
     val localUid = varchar("local_uid", 64).uniqueIndex()
     val replayR2Key = varchar("replay_r2_key", 255).nullable()
     val flagged = bool("flagged").default(false)
+    val flagReason = varchar("flag_reason", 255).nullable()
     val reviewed = bool("reviewed").default(false)
     val leaderboardPending = bool("leaderboard_pending").default(false)
     val pluginVersionId = integer("plugin_version_id").references(PluginVersionsTable.id)

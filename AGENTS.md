@@ -17,6 +17,7 @@ Companion repo: [cs16kz](https://github.com/nquinquenel/cs16kz) — the C++ AMX 
 - **Flyway** for migrations (SQL files in `src/main/resources/db/migration/`)
 - **Koin** for DI
 - **AWS SDK for Kotlin** for Cloudflare R2 (S3-compatible)
+- **zstd-jni** to decompress KRP replays
 - **PostgreSQL** via HikariCP
 - **Logback** for logging
 

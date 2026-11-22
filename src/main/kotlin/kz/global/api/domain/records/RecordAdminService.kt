@@ -95,6 +95,7 @@ class RecordAdminService(
                     checkpoints = row[MapRecordsTable.checkpoints],
                     gochecks = row[MapRecordsTable.gochecks],
                     flagged = row[MapRecordsTable.flagged],
+                    flagReason = row[MapRecordsTable.flagReason],
                     reviewed = row[MapRecordsTable.reviewed],
                     hasReplay = replayKey != null,
                     createdAt = row[MapRecordsTable.createdAt].toString(),

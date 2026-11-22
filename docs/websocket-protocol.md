@@ -235,7 +235,7 @@ No response is sent.
 }
 ```
 
-Only non-flagged records are returned.
+Only records that are not flagged and not waiting on a replay (`leaderboard_pending`) are returned.
 
 ---
 
@@ -339,7 +339,9 @@ After a run is accepted with `RECORD_ACK`, the plugin may upload the replay as a
 - `chunk_index` — 0-based chunk index (uint64 on the wire; must fit in a 32-bit range for the API).
 - `chunk_total` — total number of chunks in this upload (uint64 on the wire; bounded server-side).
 
-Once all chunks are received and CRC-validated, the API assembles them, verifies the ZSTD magic header (`0x28 0xB5 0x2F 0xFD`), and stores the result in R2.
+Once all chunks are received and CRC-validated, the API assembles them and verifies the ZSTD magic header (`0x28 0xB5 0x2F 0xFD`). It then decompresses the body (capped at 100 MiB) and checks that it is a KRP v1 file: magic, version, and section sizes. Frame bytes are not reconstructed. The 256-byte header must match the submitted run's SteamID, map name, checkpoints, and gochecks.
+
+A matching replay finalizes personal-best and world-record updates, then stores the file when the run is in the top 10. A replay that does not decode or whose header does not match is flagged (`flag_reason` set), kept off the leaderboards, and stored for review. That outcome is still `FILE_ACK` with `status: true`, so the plugin does not upload the same file again.
 
 `FILE_ACK` (106) response:
 
@@ -347,7 +349,7 @@ Once all chunks are received and CRC-validated, the API assembles them, verifies
 { "local_uid": "server-side-unique-string", "status": true }
 ```
 
-`status: false` indicates the upload was rejected (bad CRC, missing ZSTD magic, or unknown `local_uid`).
+`status: false` indicates a transport failure (bad CRC, missing ZSTD magic, unknown `local_uid`, or a store error on a replay that otherwise matched). The plugin retries those.
 
 ---
 

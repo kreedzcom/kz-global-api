@@ -217,7 +217,7 @@ Application-layer abuse controls (all tunable under `security.*` in `application
 | **Replay assembly caps** | Max assembled replay bytes (default 100 MiB), max concurrent in-flight uploads per server, TTL eviction of stale partial uploads |
 | **Replay binding** | In-memory upload state and R2 store require matching `server_id` + `local_uid` |
 | **Player bans** | `player.is_banned` enforced on `PLAYER_JOIN` and `ADD_RECORD`; admin `PATCH /admin/players/{steamid}/ban` |
-| **Replay-required leaderboards** | When `REQUIRE_REPLAY_FOR_LEADERBOARD=true`, PB/WR updates and WR broadcasts wait until replay is stored (`leaderboard_pending` on `map_record`) |
+| **Replay-gated leaderboards** | Every run is inserted with `leaderboard_pending`. PB/WR updates wait until the replay decompresses as KRP v1 and its header matches the run. A mismatch is flagged and stays off the boards |
 | **WR improvement ratio** | Optional `MAX_WR_IMPROVEMENT_RATIO` rejects runs that beat the WR by more than a configured fraction |
 | **Metrics auth** | `GET /metrics` requires `METRICS_BEARER_KEY` when set (Prometheus scrapes with bearer token in production) |
 | **Event log retention** | Background job deletes `event_log` rows older than configured days |
@@ -249,11 +249,12 @@ Events are emitted **after** the database transaction commits to keep them consi
 2. **WR improvement ratio** — if `MAX_WR_IMPROVEMENT_RATIO` is set and a WR exists, reject impossibly large improvements vs the current WR time.
 3. **Idempotency check** — if `local_uid` already exists, return `RecordResult.Duplicate` with the existing record id.
 4. **Anti-cheat** — if `map_minimum_time` exists for the map and the submitted time is below it, return `RecordResult.Rejected`.
-5. **Insert** — create `map_record` row with a UUIDv7 id; set `leaderboard_pending` when replay-required mode is enabled.
-6. **Leaderboard update** — unless deferred: if **`gochecks == 0`**, upsert `best_pro_record` and possibly `world_record` (`pro`); otherwise upsert `best_nub_record` and possibly `world_record` (`nub`). A run never updates both categories.
-7. After the transaction (or after replay store when pending): emit `KzEvent.NewRecord` and optionally `KzEvent.NewWorldRecord`; write audit log.
+5. **Insert** — create `map_record` row with a UUIDv7 id and `leaderboard_pending = true`. Personal bests and world records are not updated yet.
+6. **Replay check** — when the replay finishes uploading, decompress it and require KRP v1 structure plus a header match (SteamID, map, checkpoints, gochecks). Frame contents are not inspected.
+7. **Leaderboard update** — only after that check passes. If **`gochecks == 0`**, upsert `best_pro_record` and possibly `world_record` (`pro`); otherwise upsert `best_nub_record` and possibly `world_record` (`nub`). A run never updates both categories. Then emit `KzEvent.NewRecord` and optionally `KzEvent.NewWorldRecord`, and write the audit log.
+8. **Flag** — if the replay does not decode or the header does not match, set `flagged` and `flag_reason`, clear `leaderboard_pending`, and do not apply PB/WR updates.
 
-`RecordService.finalizePendingLeaderboard(localUid)` runs the deferred leaderboard step after a successful R2 upload.
+`RecordService.finalizePendingLeaderboard(localUid)` runs step 7. It does nothing when the row is flagged.
 
 ---
 
@@ -272,9 +273,9 @@ Replays are uploaded as a sequence of binary WebSocket frames, each containing a
 | 80 | 4 B | total chunk count |
 | 84 | 4 B | padding |
 
-`ReplayService` validates each chunk's CRC32, assembles them in memory (with per-server concurrency, TTL, and max-byte caps), verifies the ZSTD magic bytes (`0x28 0xB5 0x2F 0xFD`) of the concatenated payload, then uploads the result to R2 under the key `replays/{record_uuid}.krpz` and records the key in `map_record.replay_r2_key`. Each in-flight upload is bound to the `server_id` that started it.
+`ReplayService` validates each chunk's CRC32, assembles them in memory (with per-server concurrency, TTL, and max-byte caps), and verifies the ZSTD magic bytes (`0x28 0xB5 0x2F 0xFD`). `KrpReplayValidator` then decompresses the body (100 MiB cap) and checks KRP v1 magic, version, and section sizes, then compares the header to the submitted run. It does not rebuild frames. A passing replay is uploaded to R2 under `replays/{record_uuid}.krpz` when it belongs in the top 10, and the key is stored on `map_record.replay_r2_key`. A failing replay is flagged and stored even when it is outside the top 10. Each in-flight upload is bound to the `server_id` that started it.
 
-**Top-10 retention:** replays are stored only for records that appear in the top 10 fastest player bests on a map (separate pro/nub leaderboards, same query as `COURSE_TOP`). Uploads for runs outside the top 10 are acknowledged but not written to R2. After each leaderboard change or replay upload, replays for displaced records are deleted from R2 and `replay_r2_key` is cleared — except for **flagged** records, which keep their replay until an admin deletes the record (so flagged runs remain reviewable in the admin UI).
+**Top-10 retention:** replays of unflagged records are stored only for runs in the top 10 fastest player bests on a map (separate pro/nub leaderboards, same query as `COURSE_TOP`). After each leaderboard change or replay upload, replays for displaced records are deleted from R2 and `replay_r2_key` is cleared — except for **flagged** records, which keep their replay until an admin deletes the record (so flagged runs remain reviewable in the admin UI).
 
 ---
 
@@ -341,7 +342,7 @@ All configuration is injected through environment variables consumed by `applica
 | `R2_BUCKET`            | ✓        | Bucket name for replay storage                   |
 | `ADMIN_BEARER_KEY`     | ✓        | Static bearer token for admin API                |
 | `METRICS_BEARER_KEY`   |          | Bearer token for `GET /metrics` (recommended in prod) |
-| `REQUIRE_REPLAY_FOR_LEADERBOARD` | | Set `true` to defer PB/WR until replay is stored |
+| `REQUIRE_REPLAY_FOR_LEADERBOARD` | | Ignored. PB/WR always wait until a matching replay is accepted |
 | `MAX_WR_IMPROVEMENT_RATIO` |      | Optional `0.0`–`1.0`; max fractional WR improvement per run |
 | `PORT`                 |          | HTTP port (default 8080)                         |
 | `LOG_FORMAT`           |          | Set to `json` for structured logging             |
