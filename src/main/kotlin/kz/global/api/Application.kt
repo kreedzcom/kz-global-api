@@ -16,6 +16,8 @@ import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kz.global.api.api.*
 import kz.global.api.auth.configureAdminAuth
@@ -23,6 +25,7 @@ import kz.global.api.config.loadAppConfig
 import kz.global.api.db.DatabaseFactory
 import kz.global.api.di.appModule
 import kz.global.api.di.handlersModule
+import kz.global.api.domain.replays.ReplayService
 import kz.global.api.security.constantTimeEquals
 import kz.global.api.ws.ConnectedServersRegistry
 import kz.global.api.ws.gameServerWsRoute
@@ -76,6 +79,14 @@ fun Application.module() {
     }
 
     val registry by inject<ConnectedServersRegistry>()
+    val replays by inject<ReplayService>()
+    launch {
+        val service = replays
+        while (isActive) {
+            delay(30.seconds)
+            service.evictStaleUploads()
+        }
+    }
     monitor.subscribe(ApplicationStopPreparing) {
         log.info("Shutdown initiated — draining new traffic...")
         registry.beginDrain()
