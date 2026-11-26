@@ -1,6 +1,7 @@
 package kz.global.api.config
 
 import io.ktor.server.config.*
+import java.net.InetAddress
 
 data class SecurityConfig(
     /** When set, GET /metrics requires `Authorization: Bearer <key>`. */
@@ -19,6 +20,7 @@ data class SecurityConfig(
     val wantPlayerRecordsMaxLimit: Int,
     val eventLogRetentionDays: Long,
     val maxWrImprovementRatio: Double?,
+    val trustedGameServerProxies: Set<InetAddress> = emptySet(),
 )
 
 fun ApplicationConfig.loadSecurityConfig(): SecurityConfig = SecurityConfig(
@@ -35,6 +37,8 @@ fun ApplicationConfig.loadSecurityConfig(): SecurityConfig = SecurityConfig(
     wantPlayerRecordsDefaultLimit = intProp("security.wantPlayerRecordsDefaultLimit", 50),
     wantPlayerRecordsMaxLimit = intProp("security.wantPlayerRecordsMaxLimit", 100),
     eventLogRetentionDays = longProp("security.eventLogRetentionDays", 90),
+    trustedGameServerProxies = propertyOrNull("security.trustedGameServerProxies")?.getString().orEmpty()
+        .split(',').map(String::trim).filter(String::isNotEmpty).map(InetAddress::ofLiteral).toSet(),
     maxWrImprovementRatio = propertyOrNull("security.maxWrImprovementRatio")?.getString()?.toDoubleOrNull(),
 )
 

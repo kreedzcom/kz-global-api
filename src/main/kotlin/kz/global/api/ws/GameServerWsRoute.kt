@@ -6,7 +6,8 @@ import io.ktor.websocket.*
 import kz.global.api.auth.resolveGameServerToken
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.security.WsRateLimiters
-import kz.global.api.util.clientIp
+import kz.global.api.util.gameServerIp
+import java.net.InetAddress
 import kz.global.api.ws.handlers.*
 import kotlinx.coroutines.channels.consumeEach
 import kotlinx.serialization.json.Json
@@ -20,7 +21,7 @@ private val msgIdFallbackRegex = """"msg_id"\s*:\s*(\d+)""".toRegex()
 private fun extractMsgIdFallback(text: String) =
     msgIdFallbackRegex.find(text)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
 
-fun Routing.gameServerWsRoute() {
+fun Routing.gameServerWsRoute(trustedProxies: Set<InetAddress>) {
     val registry by inject<ConnectedServersRegistry>()
     val metrics by inject<KzMetrics>()
     val rateLimiters by inject<WsRateLimiters>()
@@ -36,9 +37,9 @@ fun Routing.gameServerWsRoute() {
     val replayChunkHandler by inject<ReplayChunkHandler>()
 
     webSocket("/ws/game") {
-        val clientIp = call.clientIp()
+        val gameServerIp = call.gameServerIp(trustedProxies)
 
-        if (!rateLimiters.wsUpgradeByIp.tryAcquire(clientIp)) {
+        if (!rateLimiters.wsUpgradeByIp.tryAcquire(gameServerIp)) {
             metrics.authFailures.increment()
             close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Rate limit exceeded"))
             return@webSocket
@@ -53,7 +54,7 @@ fun Routing.gameServerWsRoute() {
             return@webSocket
         }
 
-        val serverId = resolveGameServerToken(token, clientIp)
+        val serverId = resolveGameServerToken(token, gameServerIp)
         if (serverId == null) {
             metrics.authFailures.increment()
             close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Invalid or inactive token"))
@@ -76,7 +77,7 @@ fun Routing.gameServerWsRoute() {
                         val envelope = runCatching { json.decodeFromString<WsEnvelope>(text) }.getOrNull()
 
                         if (envelope == null) {
-                            log.warn("Server {}: failed to parse envelope: {}", serverId, text.take(200))
+                            log.warn("Server {}: failed to parse envelope", serverId)
                             session.sendError(extractMsgIdFallback(text), "Invalid message format")
                             return@consumeEach
                         }
@@ -95,7 +96,7 @@ fun Routing.gameServerWsRoute() {
                                 else -> session.sendError(envelope.msgId, "Unknown msg_type: ${envelope.msgType}")
                             }
                         }.onFailure { e ->
-                            log.warn("Server {}: failed to handle message: {}", serverId, e.message)
+                            log.warn("Server {}: failed to handle message type {} ({})", serverId, envelope.msgType, e.javaClass.simpleName)
                             if (envelope.msgType == MsgType.ADD_RECORD) {
                                 session.sendError(envelope.msgId, "Record submission temporarily unavailable", retryable = true)
                             } else {

@@ -176,7 +176,7 @@ kz/global/api/
 ├── util/
 │   ├── Hex.kt                  ByteArray ↔ hex string helpers
 │   ├── UuidV7.kt               Time-ordered UUID v7 generator
-│   └── ClientIp.kt             Client IP from X-Forwarded-For or socket
+│   └── ClientIp.kt             Connecting game server IP through configured proxies
 └── ws/
     ├── GameServerWsRoute.kt    WS upgrade, frame dispatch, session lifecycle
     ├── WsMessage.kt            Message type constants, envelope, all payload types
@@ -195,7 +195,7 @@ Two independent schemes coexist.
 
 - The admin creates a server via `POST /admin/servers`. The API generates a cryptographically random 16-byte key stored as `BYTEA` in `game_server.access_key` and returns it hex-encoded (32 chars).
 - The plugin includes this key as an HTTP `Authorization: Bearer <hex>` header on the WS upgrade request.
-- `GameServerAuth.resolveGameServerToken` decodes the hex, queries for a matching active server, checks optional `game_server.allowed_ips` against the client IP (from `X-Forwarded-For` when behind Traefik), updates `last_connected_at`, and returns the server id.
+- `GameServerAuth.resolveGameServerToken` decodes the hex, queries for a matching active server, checks optional `game_server.allowed_ips` against the connecting game server’s IP, updates `last_connected_at`, and returns the server id.
 - WS upgrades are rate-limited per client IP before token validation.
 
 ### Admin API
@@ -357,4 +357,4 @@ The application is packaged as a fat JAR (`./gradlew buildFatJar`) and shipped i
 
 `docker-compose.yml` runs the API alongside PostgreSQL for local development; database image and tags are pinned there, not duplicated here.
 
-For production, place a reverse proxy such as **Traefik** in front (see `kz-global-infra`) to handle TLS termination and routing.
+For production, place a reverse proxy such as **Traefik** in front (see `kz-global-infra`) to handle TLS termination and routing. Set `KZ_TRUSTED_GAME_SERVER_PROXIES` to a comma-separated list of the exact IPv4 or IPv6 addresses of your ingress proxies. Configure the ingress to append the peer IP to `X-Forwarded-For`. The API uses the first untrusted hop from the right for game-server rate limiting and allowlists. Without configured proxies, the API uses the socket peer. Player payloads and storage contain zero player IP addresses.
