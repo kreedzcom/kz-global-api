@@ -193,14 +193,14 @@ class BroadcastServiceTest {
         val (session2, sent2) = mockSession(2)
         session1.currentMap = "kz_bc"
         session2.currentMap = "kz_other"
-        registry.register(session1)
-        registry.register(session2)
 
         val serviceScope = CoroutineScope(Dispatchers.Unconfined + Job())
         val bus = KzEventBus()
         BroadcastService(registry, bus, scope = serviceScope)
 
         runBlocking {
+            registry.register(session1)
+            registry.register(session2)
             bus.emit(KzEvent.NewWorldRecord(recordId, "STEAM_0:0:99", "kz_bc", 20_000L, "pro"))
             withTimeout(5_000.milliseconds) {
                 while (sent1().none { it.msgType == MsgType.MAP_INFO }) {

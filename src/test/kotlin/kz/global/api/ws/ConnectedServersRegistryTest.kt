@@ -32,7 +32,7 @@ class ConnectedServersRegistryTest {
     }
 
     @Test
-    fun `register increments connected count`() {
+    fun `register increments connected count`() = runTest {
         val registry = ConnectedServersRegistry()
 
         registry.register(session(1))
@@ -42,12 +42,13 @@ class ConnectedServersRegistryTest {
     }
 
     @Test
-    fun `unregister decrements connected count`() {
+    fun `unregister decrements connected count`() = runTest {
         val registry = ConnectedServersRegistry()
-        registry.register(session(1))
+        val first = session(1)
+        registry.register(first)
         registry.register(session(2))
 
-        registry.unregister(1)
+        registry.unregister(first)
 
         assertEquals(1, registry.connectedCount())
     }
@@ -67,20 +68,21 @@ class ConnectedServersRegistryTest {
     }
 
     @Test
-    fun `registering same server id overwrites previous session`() {
+    fun `registering same server id overwrites previous session`() = runTest {
         val registry = ConnectedServersRegistry()
         val first  = session(1, "kz_a")
         val second = session(1, "kz_b")
         registry.register(first)
 
         registry.register(second)
+        registry.unregister(first)
 
         assertEquals(1, registry.connectedCount())
         assertSame(second, registry.get(1))
     }
 
     @Test
-    fun `get returns registered session`() {
+    fun `get returns registered session`() = runTest {
         val registry = ConnectedServersRegistry()
         val s = session(42)
         registry.register(s)
@@ -98,7 +100,7 @@ class ConnectedServersRegistryTest {
     }
 
     @Test
-    fun `sessionsOnMap returns only sessions on that map`() {
+    fun `sessionsOnMap returns only sessions on that map`() = runTest {
         val registry = ConnectedServersRegistry()
         registry.register(session(1, "kz_canyon"))
         registry.register(session(2, "kz_bhop"))
@@ -112,7 +114,7 @@ class ConnectedServersRegistryTest {
     }
 
     @Test
-    fun `sessionsOnMap returns empty list when no sessions on that map`() {
+    fun `sessionsOnMap returns empty list when no sessions on that map`() = runTest {
         val registry = ConnectedServersRegistry()
         registry.register(session(1, "kz_a"))
 
@@ -122,7 +124,7 @@ class ConnectedServersRegistryTest {
     }
 
     @Test
-    fun `allSessions returns all registered sessions`() {
+    fun `allSessions returns all registered sessions`() = runTest {
         val registry = ConnectedServersRegistry()
         registry.register(session(1))
         registry.register(session(2))
@@ -138,7 +140,10 @@ class ConnectedServersRegistryTest {
         val registry = ConnectedServersRegistry()
         registry.register(session(7))
 
-        registry.disconnect(7)
+        registry.revoke(7)
+        val lateReconnect = registry.register(session(7))
+
+        assertFalse(lateReconnect)
 
         assertNull(registry.get(7))
         assertEquals(0, registry.connectedCount())

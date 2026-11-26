@@ -262,7 +262,9 @@ class ServersRouteTest {
     fun `GET connected serializes active sessions`() = testApplication {
         setupAdminRoutes(configureRegistry = {
             val socket = mockk<DefaultWebSocketSession>(relaxed = true)
-            register(GameServerSession(3, socket).also { it.currentMap = "bkz_goldbhop" })
+            kotlinx.coroutines.runBlocking {
+                register(GameServerSession(3, socket).also { it.currentMap = "bkz_goldbhop" })
+            }
         })
 
         val response = client.get("/admin/servers/connected") {
