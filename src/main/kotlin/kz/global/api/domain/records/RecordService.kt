@@ -1,5 +1,6 @@
 package kz.global.api.domain.records
 
+import kz.global.api.auth.lockActiveGameServer
 import kz.global.api.config.SecurityConfig
 import kz.global.api.db.tables.*
 import kz.global.api.domain.players.PlayerBanService
@@ -25,6 +26,7 @@ import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 sealed class RecordResult {
+    data object ServerInactive : RecordResult()
     data class Accepted(val recordId: Uuid, val isPb: Boolean) : RecordResult()
     data class Duplicate(val recordId: Uuid) : RecordResult()
     data class Rejected(val reason: String) : RecordResult()
@@ -91,6 +93,7 @@ class RecordService(
 
     suspend fun finalizePendingLeaderboard(recordId: Uuid, stagedReplayKey: String): Boolean = withContext(ioDispatcher) {
         val finalized = suspendTransaction {
+            if (!lockActiveRecordServer(recordId)) return@suspendTransaction null
             if (!lockRecordMap(recordId)) return@suspendTransaction null
             val row = MapRecordsTable
                 .selectAll()
@@ -132,6 +135,7 @@ class RecordService(
 
     suspend fun flagInvalidReplay(recordId: Uuid, reason: String, stagedReplayKey: String? = null): Boolean = withContext(ioDispatcher) {
         val outcome = suspendTransaction {
+            if (stagedReplayKey != null && !lockActiveRecordServer(recordId)) return@suspendTransaction FlagOutcome.Missing
             if (!lockRecordMap(recordId)) return@suspendTransaction FlagOutcome.Missing
             val row = MapRecordsTable
                 .selectAll()
@@ -254,6 +258,7 @@ class RecordService(
         val sample = Timer.start()
         try {
             suspendTransaction {
+                if (!lockActiveGameServer(serverId)) return@suspendTransaction RecordResult.ServerInactive
                 findDuplicate(serverId, payload)?.let { return@suspendTransaction it }
 
                 val minTime = MapMinimumTimesTable

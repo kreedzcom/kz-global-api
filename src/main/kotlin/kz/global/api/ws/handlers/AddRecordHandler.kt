@@ -1,5 +1,8 @@
 package kz.global.api.ws.handlers
 
+import io.ktor.websocket.CloseReason
+import io.ktor.websocket.close
+
 import kz.global.api.domain.records.RecordResult
 import kz.global.api.domain.records.RecordService
 import kz.global.api.security.WsPayloadValidator
@@ -55,6 +58,9 @@ class AddRecordHandler(
         }
 
         when (val result = recordService.submit(session.serverId, pluginVersionId, payload)) {
+            RecordResult.ServerInactive -> {
+                session.socket.close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Server revoked"))
+            }
             is RecordResult.Accepted -> {
                 session.sendJson(MsgType.RECORD_ACK, envelope.msgId, RecordAckPayload(
                     id = result.recordId.toString(),

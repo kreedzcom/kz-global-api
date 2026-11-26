@@ -16,6 +16,7 @@ import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
+import org.jetbrains.exposed.v1.jdbc.update
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.TestInstance
@@ -78,6 +79,30 @@ class RecordServiceFinalizeLeaderboardTest {
         transaction {
             assertFalse(MapRecordsTable.selectAll().where { MapRecordsTable.localUid eq "uid-finalize" }.single()[MapRecordsTable.leaderboardPending])
             assertEquals(1, BestProRecordsTable.selectAll().count())
+        }
+    }
+
+    @Test
+    fun `shared deactivation fences record and replay commits`() = runTest {
+        val payload = AddRecordPayload("STEAM_0:0:77", "kz_revoked", 25_000L, "uid-before", 0, 0)
+        val before = assertIs<RecordResult.Accepted>(service.submit(serverId, pluginVersionId, payload))
+        transaction {
+            GameServersTable.update({ GameServersTable.id eq serverId }) { it[active] = false }
+        }
+        val replayKey = "replays/${before.recordId}.krpz"
+
+        val later = service.submit(serverId, pluginVersionId, payload.copy(localUid = "uid-after"))
+        val ranked = service.finalizePendingLeaderboard(before.recordId, replayKey)
+        val flagged = service.flagInvalidReplay(before.recordId, "invalid replay", replayKey)
+
+        assertEquals(RecordResult.ServerInactive, later)
+        assertFalse(ranked)
+        assertFalse(flagged)
+        transaction {
+            val record = MapRecordsTable.selectAll().single()
+            assertTrue(record[MapRecordsTable.leaderboardPending])
+            assertFalse(record[MapRecordsTable.flagged])
+            assertEquals(null, record[MapRecordsTable.replayR2Key])
         }
     }
 

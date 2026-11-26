@@ -3,11 +3,25 @@ package kz.global.api.auth
 import kz.global.api.db.tables.GameServersTable
 import kz.global.api.security.IpAllowlist
 import kz.global.api.util.fromHex
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.jetbrains.exposed.v1.core.*
+import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 import org.jetbrains.exposed.v1.jdbc.update
 import kotlin.time.Clock
+
+private fun activeGameServer(serverId: Int) =
+    GameServersTable.select(GameServersTable.id)
+        .where { (GameServersTable.id eq serverId) and (GameServersTable.active eq true) }
+
+internal fun lockActiveGameServer(serverId: Int): Boolean =
+    activeGameServer(serverId).forUpdate().singleOrNull() != null
+
+internal suspend fun isGameServerActive(serverId: Int): Boolean = withContext(Dispatchers.IO) {
+    suspendTransaction { activeGameServer(serverId).singleOrNull() != null }
+}
 
 suspend fun resolveGameServerToken(bearerToken: String, clientIp: String): Int? {
 

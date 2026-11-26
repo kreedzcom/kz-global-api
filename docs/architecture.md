@@ -358,3 +358,5 @@ The application is packaged as a fat JAR (`./gradlew buildFatJar`) and shipped i
 `docker-compose.yml` runs the API alongside PostgreSQL for local development; database image and tags are pinned there, not duplicated here.
 
 For production, place a reverse proxy such as **Traefik** in front (see `kz-global-infra`) to handle TLS termination and routing. Set `KZ_TRUSTED_GAME_SERVER_PROXIES` to a comma-separated list of the exact IPv4 or IPv6 addresses of your ingress proxies. Configure the ingress to append the peer IP to `X-Forwarded-For`. The API uses the first untrusted hop from the right for game-server rate limiting and allowlists. Without configured proxies, the API uses the socket peer. Player payloads and storage contain zero player IP addresses.
+
+Game server revocation updates the shared database. Each API instance checks whether the servers behind its live sockets are still active. Record insertion and replay publication check and lock the active server row in the same transaction as the write, including during a rolling deploy.

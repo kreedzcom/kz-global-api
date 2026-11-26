@@ -5,6 +5,7 @@ import kz.global.api.db.tables.BestNubRecordsTable
 import kz.global.api.db.tables.BestProRecordsTable
 import kz.global.api.db.tables.MapRecordsTable
 import kz.global.api.db.tables.WorldRecordsTable
+import kz.global.api.domain.records.lockActiveRecordServer
 import kz.global.api.domain.records.lockRecordMap
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.storage.R2Client
@@ -204,6 +205,7 @@ class ReplayService(
     suspend fun attachReplay(recordId: Uuid, key: String, flagged: Boolean): Boolean =
         withContext(ioDispatcher) {
             suspendTransaction {
+                if (!lockActiveRecordServer(recordId)) return@suspendTransaction false
                 if (!lockRecordMap(recordId)) return@suspendTransaction false
                 MapRecordsTable.update({
                     (MapRecordsTable.id eq recordId) and

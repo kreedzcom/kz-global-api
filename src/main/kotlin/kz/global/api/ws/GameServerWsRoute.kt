@@ -3,6 +3,7 @@ package kz.global.api.ws
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
+import kz.global.api.auth.isGameServerActive
 import kz.global.api.auth.resolveGameServerToken
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.security.WsRateLimiters
@@ -10,6 +11,10 @@ import kz.global.api.util.gameServerIp
 import java.net.InetAddress
 import kz.global.api.ws.handlers.*
 import kotlinx.coroutines.channels.consumeEach
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.Json
 import org.koin.ktor.ext.inject
 import org.slf4j.LoggerFactory
@@ -72,6 +77,23 @@ fun Routing.gameServerWsRoute(trustedProxies: Set<InetAddress>) {
             return@webSocket
         }
 
+        val revocationCheck = launch {
+            while (true) {
+                delay(5.seconds)
+                val active = try {
+                    isGameServerActive(serverId)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    log.warn("Could not check revocation for server {}", serverId, e)
+                    continue
+                }
+                if (!active) {
+                    registry.revoke(serverId)
+                    break
+                }
+            }
+        }
         try {
             incoming.consumeEach { frame ->
                 if (registry.get(serverId) !== session) return@webSocket
@@ -119,6 +141,7 @@ fun Routing.gameServerWsRoute(trustedProxies: Set<InetAddress>) {
                 }
             }
         } finally {
+            revocationCheck.cancel()
             registry.unregister(session)
         }
     }

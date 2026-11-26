@@ -1,5 +1,6 @@
 package kz.global.api.domain.records
 
+import kz.global.api.auth.lockActiveGameServer
 import kz.global.api.db.tables.*
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.*
@@ -29,6 +30,14 @@ data class RepairResult(
     val wrProChanged: Boolean get() = previousWrProId != newWrProId
     val wrNubChanged: Boolean get() = previousWrNubId != newWrNubId
     val wrChanged: Boolean get() = wrProChanged || wrNubChanged
+}
+
+/** Acquire the server lock before the map lock for game-server writes. */
+internal fun lockActiveRecordServer(recordId: Uuid): Boolean {
+    val serverId = MapRecordsTable.select(MapRecordsTable.serverId)
+        .where { MapRecordsTable.id eq recordId }
+        .singleOrNull()?.get(MapRecordsTable.serverId) ?: return false
+    return lockActiveGameServer(serverId)
 }
 
 /** Acquire the map lock before touching any of its leaderboard rows. */
