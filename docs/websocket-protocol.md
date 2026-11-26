@@ -74,8 +74,8 @@ Binary frames are used exclusively for **replay chunk uploads** (see below).
 }
 ```
 
-- `plugin_version` — semver string; must match an active row in `plugin_version`.
-- `plugin_checksum` — hex-encoded MD5/SHA of the Linux plugin binary; must match `checksum_linux` for that version.
+- `plugin_version` is the exact embedded release version and must match an active `plugin_version` row.
+- `plugin_checksum` is a hex-encoded 16-byte source fingerprint. The API accepts either registered platform fingerprint for that version. Release registration values are published in `kz-hello.txt`.
 - If the plugin version is marked `is_cutoff = true` the connection is rejected.
 
 ### `HELLO_ACK` (101)
@@ -262,11 +262,11 @@ Only records that are not flagged and not waiting on a replay (`leaderboard_pend
 {
   "id":        "01970000-0000-7000-0000-000000000000",
   "local_uid": "server-side-unique-string",
-  "is_pb":     true
+  "is_pb":     false
 }
 ```
 
-`id` is the global UUIDv7 assigned by the API.
+`id` is the global UUIDv7 assigned by the API. `is_pb` is `false` on submission and duplicate acknowledgment. Ranking waits for successful replay validation.
 
 ---
 
