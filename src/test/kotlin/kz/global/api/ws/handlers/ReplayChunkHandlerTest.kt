@@ -253,6 +253,7 @@ class ReplayChunkHandlerTest {
         pendingHandler.handle(session, ReplayServiceTest.buildChunk("uid-pending-lb", payload, 0, 1))
 
         assertTrue(sent().single().data.jsonObject["status"]!!.jsonPrimitive.boolean)
+        assertTrue(sent().single().data.jsonObject["playable"]!!.jsonPrimitive.boolean)
         transaction {
             assertFalse(
                 MapRecordsTable.selectAll()
@@ -298,6 +299,7 @@ class ReplayChunkHandlerTest {
         handler.handle(session, ReplayServiceTest.buildChunk("uid-bad", payload, 0, 1))
 
         assertTrue(sent().single().data.jsonObject["status"]!!.jsonPrimitive.boolean)
+        assertFalse(sent().single().data.jsonObject["playable"]!!.jsonPrimitive.boolean)
         assertTrue(r2.putCalls.single().first.startsWith("replays/$recordId/"))
         transaction {
             val row = MapRecordsTable.selectAll().where { MapRecordsTable.id eq recordId }.single()
@@ -323,6 +325,7 @@ class ReplayChunkHandlerTest {
         handler.handle(session, chunk)
 
         assertEquals(listOf(false, true, true), sent().map { it.data.jsonObject["status"]!!.jsonPrimitive.boolean })
+        assertEquals(listOf(null, false, false), sent().map { it.data.jsonObject["playable"]?.jsonPrimitive?.booleanOrNull })
         assertTrue(r2.putCalls.single().first.startsWith("replays/$recordId/"))
         transaction {
             val record = MapRecordsTable.selectAll().where { MapRecordsTable.id eq recordId }.single()
@@ -358,6 +361,7 @@ class ReplayChunkHandlerTest {
         release.complete(Unit)
 
         assertEquals(2, sent().size)
+        assertEquals(listOf(true, false), sent().map { it.data.jsonObject["playable"]?.jsonPrimitive?.booleanOrNull })
         assertEquals(listOf(losingKey), r2.deleteCalls)
         assertEquals(2, r2.putCalls.map { it.first }.toSet().size)
         transaction {
