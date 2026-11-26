@@ -118,6 +118,7 @@ class RecordAdminService(
 
     suspend fun deleteRecord(recordId: Uuid, actor: String? = null): AdminRecordMutationResult {
         val outcome = suspendTransaction {
+            if (!lockRecordMap(recordId)) return@suspendTransaction null
             val snapshot = loadSnapshot(recordId) ?: return@suspendTransaction null
             val (prevPro, prevNub) = repairService.captureWrIds(snapshot.mapName)
 
@@ -161,6 +162,7 @@ class RecordAdminService(
         }
 
         val outcome = suspendTransaction {
+            if (!lockRecordMap(recordId)) return@suspendTransaction null
             val snapshot = loadSnapshot(recordId) ?: return@suspendTransaction null
             val (prevPro, prevNub) = repairService.captureWrIds(snapshot.mapName)
 

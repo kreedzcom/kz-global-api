@@ -3,7 +3,6 @@ package kz.global.api.domain.records
 import kz.global.api.config.SecurityConfig
 import kz.global.api.db.tables.*
 import kz.global.api.domain.players.PlayerBanService
-import kz.global.api.domain.replays.ReplayService
 import kz.global.api.events.AuditLogger
 import kz.global.api.events.KzEvent
 import kz.global.api.events.KzEventBus
@@ -50,7 +49,6 @@ class RecordService(
     private val metrics: KzMetrics,
     private val playerBanService: PlayerBanService,
     private val security: SecurityConfig,
-    private val replayService: ReplayService,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val log = LoggerFactory.getLogger(RecordService::class.java)
@@ -91,8 +89,9 @@ class RecordService(
         return txResult as RecordResult
     }
 
-    suspend fun finalizePendingLeaderboard(recordId: Uuid): Boolean = withContext(ioDispatcher) {
+    suspend fun finalizePendingLeaderboard(recordId: Uuid, stagedReplayKey: String): Boolean = withContext(ioDispatcher) {
         val finalized = suspendTransaction {
+            if (!lockRecordMap(recordId)) return@suspendTransaction null
             val row = MapRecordsTable
                 .selectAll()
                 .where { MapRecordsTable.id eq recordId }
@@ -114,6 +113,7 @@ class RecordService(
 
             MapRecordsTable.update({ MapRecordsTable.id eq recordId }) {
                 it[leaderboardPending] = false
+                it[replayR2Key] = stagedReplayKey
             }
 
             if (isWrNub || isWrPro) metrics.worldRecords.increment()
@@ -126,15 +126,12 @@ class RecordService(
         } ?: return@withContext false
 
         emitEvents(finalized.first, finalized.second, finalized.third)
-        replayService.pruneReplaysOutsideTop10(
-            finalized.second.mapName,
-            replayService.categoryForGochecks(finalized.second.gochecks),
-        )
         true
     }
 
     suspend fun flagInvalidReplay(recordId: Uuid, reason: String): Boolean = withContext(ioDispatcher) {
         val outcome = suspendTransaction {
+            if (!lockRecordMap(recordId)) return@suspendTransaction FlagOutcome.Missing
             val row = MapRecordsTable
                 .selectAll()
                 .where { MapRecordsTable.id eq recordId }

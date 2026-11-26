@@ -99,9 +99,13 @@ class ReplayChunkHandler(
                 )
 
                 session.socket.launch {
+                    if (recordRow[MapRecordsTable.replayR2Key] != null) {
+                        session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = true))
+                        return@launch
+                    }
                     when (val validation = KrpReplayValidator.validate(assembled, identity)) {
                         is KrpValidation.Rejected -> rejectReplay(session, chunk.localUid, recordId, assembled, validation.reason)
-                        is KrpValidation.Accepted -> acceptReplay(session, chunk.localUid, recordId, mapName, category, assembled)
+                        is KrpValidation.Accepted -> acceptReplay(session, chunk.localUid, recordId, mapName, category, recordRow[MapRecordsTable.leaderboardPending], assembled)
                     }
                 }
             }
@@ -114,12 +118,14 @@ class ReplayChunkHandler(
         recordId: Uuid,
         mapName: String,
         category: String,
+        pending: Boolean,
         assembled: ByteArray,
     ) {
         runCatching {
-            recordService.finalizePendingLeaderboard(recordId)
-
-            if (replayService.isRecordInTop10(recordId, mapName, category)) {
+            if (pending) {
+                val stagedKey = replayService.stageReplay(recordId, assembled)
+                recordService.finalizePendingLeaderboard(recordId, stagedKey)
+            } else if (replayService.isRecordInTop10(recordId, mapName, category)) {
                 replayService.storeReplay(recordId, assembled)
                 log.info("Server {}: replay stored for record {}", session.serverId, recordId)
             } else {

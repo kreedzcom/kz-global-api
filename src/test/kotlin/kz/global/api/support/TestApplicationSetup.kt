@@ -80,7 +80,7 @@ fun ApplicationTestBuilder.setupAdminRoutes(
                 single { PlayerAdminService() }
                 single { EventLogAdminService() }
                 single { ReplayService(get(), get(), get()) }
-                single { RecordService(get(), get(), get(), get(), get(), get()) }
+                single { RecordService(get(), get(), get(), get(), get()) }
                 single { LeaderboardRepairService() }
                 single(named("applicationCoroutineScope")) { testScope }
                 single {

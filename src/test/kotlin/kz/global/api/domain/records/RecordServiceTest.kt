@@ -8,7 +8,6 @@ import kz.global.api.events.AuditLogger
 import kz.global.api.events.KzEventBus
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.support.TestDatabase
-import kz.global.api.support.testReplayService
 import kz.global.api.support.testSecurityConfig
 import kz.global.api.ws.AddRecordPayload
 import kz.global.api.ws.ConnectedServersRegistry
@@ -35,7 +34,7 @@ class RecordServiceTest {
     private val eventBus = KzEventBus()
     private val metrics = KzMetrics(SimpleMeterRegistry(), ConnectedServersRegistry())
     private val banService = PlayerBanService(AuditLogger())
-    private val service = RecordService(eventBus, auditLogger, metrics, banService, testSecurityConfig(), testReplayService())
+    private val service = RecordService(eventBus, auditLogger, metrics, banService, testSecurityConfig())
 
     private var serverId = 0
     private var pluginVersionId = 0
@@ -121,7 +120,7 @@ class RecordServiceTest {
 
         val result = service.submit(serverId, pluginVersionId, payload)
         assertIs<RecordResult.Accepted>(result)
-        assertTrue(service.finalizePendingLeaderboard(result.recordId))
+        assertTrue(service.finalizePendingLeaderboard(result.recordId, "replays/${result.recordId}.krpz"))
 
         transaction {
             assertNotNull(
@@ -163,7 +162,7 @@ class RecordServiceTest {
 
         val result = service.submit(serverId, pluginVersionId, payload)
         assertIs<RecordResult.Accepted>(result)
-        assertTrue(service.finalizePendingLeaderboard(result.recordId))
+        assertTrue(service.finalizePendingLeaderboard(result.recordId, "replays/${result.recordId}.krpz"))
 
         transaction {
             assertNotNull(
@@ -258,7 +257,7 @@ class RecordServiceTest {
         val payload = AddRecordPayload(steamid, "kz_wr", 20_000L, "uid-wr", 0, 0)
 
         val result = assertIs<RecordResult.Accepted>(service.submit(serverId, pluginVersionId, payload))
-        assertTrue(service.finalizePendingLeaderboard(result.recordId))
+        assertTrue(service.finalizePendingLeaderboard(result.recordId, "replays/${result.recordId}.krpz"))
 
         transaction {
             assertNull(
@@ -279,7 +278,7 @@ class RecordServiceTest {
         val payload = AddRecordPayload(steamid, "kz_nub", 40_000L, "uid-nub-wr", 10, 3)
 
         val result = assertIs<RecordResult.Accepted>(service.submit(serverId, pluginVersionId, payload))
-        assertTrue(service.finalizePendingLeaderboard(result.recordId))
+        assertTrue(service.finalizePendingLeaderboard(result.recordId, "replays/${result.recordId}.krpz"))
 
         transaction {
             assertNotNull(
@@ -301,7 +300,7 @@ class RecordServiceTest {
     fun `faster run replaces world record`() = runTest {
         val slow = AddRecordPayload(steamid, "kz_race", 50_000L, "uid-slow", 0, 0)
         val slowResult = assertIs<RecordResult.Accepted>(service.submit(serverId, pluginVersionId, slow))
-        assertTrue(service.finalizePendingLeaderboard(slowResult.recordId))
+        assertTrue(service.finalizePendingLeaderboard(slowResult.recordId, "replays/${slowResult.recordId}.krpz"))
         val steamid2 = "STEAM_0:0:99999"
         transaction {
             PlayersTable.upsert(PlayersTable.steamid) {
@@ -312,7 +311,7 @@ class RecordServiceTest {
         val fast = AddRecordPayload(steamid2, "kz_race", 30_000L, "uid-fast", 0, 0)
 
         val fastResult = service.submit(serverId, pluginVersionId, fast) as RecordResult.Accepted
-        assertTrue(service.finalizePendingLeaderboard(fastResult.recordId))
+        assertTrue(service.finalizePendingLeaderboard(fastResult.recordId, "replays/${fastResult.recordId}.krpz"))
 
         transaction {
             val wr = WorldRecordsTable.selectAll()
@@ -326,7 +325,7 @@ class RecordServiceTest {
     fun `slower run does not replace world record`() = runTest {
         val fast = AddRecordPayload(steamid, "kz_hold", 20_000L, "uid-hold-fast", 0, 0)
         val fastResult = service.submit(serverId, pluginVersionId, fast) as RecordResult.Accepted
-        assertTrue(service.finalizePendingLeaderboard(fastResult.recordId))
+        assertTrue(service.finalizePendingLeaderboard(fastResult.recordId, "replays/${fastResult.recordId}.krpz"))
         val steamid2 = "STEAM_0:0:77777"
         transaction {
             PlayersTable.upsert(PlayersTable.steamid) {
@@ -337,7 +336,7 @@ class RecordServiceTest {
         val slow = AddRecordPayload(steamid2, "kz_hold", 40_000L, "uid-hold-slow", 0, 0)
 
         val slowResult = service.submit(serverId, pluginVersionId, slow) as RecordResult.Accepted
-        assertTrue(service.finalizePendingLeaderboard(slowResult.recordId))
+        assertTrue(service.finalizePendingLeaderboard(slowResult.recordId, "replays/${slowResult.recordId}.krpz"))
 
         transaction {
             val slowBest = BestProRecordsTable.selectAll()
@@ -358,11 +357,11 @@ class RecordServiceTest {
     fun `pro run slower than player nub run does not overwrite nub best`() = runTest {
         val nub = AddRecordPayload(steamid, "kz_mix", 20_000L, "uid-mix-nub", 8, 5)
         val nubResult = service.submit(serverId, pluginVersionId, nub) as RecordResult.Accepted
-        assertTrue(service.finalizePendingLeaderboard(nubResult.recordId))
+        assertTrue(service.finalizePendingLeaderboard(nubResult.recordId, "replays/${nubResult.recordId}.krpz"))
         val pro = AddRecordPayload(steamid, "kz_mix", 25_000L, "uid-mix-pro", 0, 0)
 
         val proResult = service.submit(serverId, pluginVersionId, pro) as RecordResult.Accepted
-        assertTrue(service.finalizePendingLeaderboard(proResult.recordId))
+        assertTrue(service.finalizePendingLeaderboard(proResult.recordId, "replays/${proResult.recordId}.krpz"))
 
         transaction {
             val proBest = BestProRecordsTable.selectAll()

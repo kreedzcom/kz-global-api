@@ -8,7 +8,6 @@ import kz.global.api.events.AuditLogger
 import kz.global.api.events.KzEventBus
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.support.TestDatabase
-import kz.global.api.support.testReplayService
 import kz.global.api.support.testSecurityConfig
 import kz.global.api.ws.AddRecordPayload
 import kz.global.api.ws.ConnectedServersRegistry
@@ -35,7 +34,6 @@ class RecordServiceReplayRequiredTest {
         KzMetrics(SimpleMeterRegistry(), ConnectedServersRegistry()),
         PlayerBanService(AuditLogger()),
         testSecurityConfig(requireReplayForLeaderboard = true),
-        testReplayService(),
     )
 
     private var serverId = 0

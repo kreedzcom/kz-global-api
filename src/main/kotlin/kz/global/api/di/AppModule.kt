@@ -44,7 +44,7 @@ fun appModule(config: AppConfig, prometheusRegistry: PrometheusMeterRegistry) = 
     }
     single { KzMetrics(get(), get()) }
     single { LeaderboardRepairService() }
-    single { RecordService(get(), get(), get(), get(), get(), get()) }
+    single { RecordService(get(), get(), get(), get(), get()) }
     single {
         RecordAdminService(
             get(),
