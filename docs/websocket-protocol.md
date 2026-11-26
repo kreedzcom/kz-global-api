@@ -296,7 +296,7 @@ When a world record changes, the API pushes **`MAP_INFO` (`msg_type` 102)** with
 ```
 
 - `url` — HTTPS presigned GET URL, valid for **1 hour**.
-- Plugin downloads via HTTPS only, validates zstd magic, saves to `kz_global/replays/{map_name}/{local_uid}.krpz`.
+- Plugin downloads via HTTPS only, validates zstd magic, saves to `kz_global/replays/{map_name}/{local_uid}_{record_id}.krpz`.
 
 ### `DEL_RECORD_NOTIFY` (109)
 
