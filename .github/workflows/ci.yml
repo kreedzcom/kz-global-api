@@ -15,6 +15,20 @@ jobs:
   build:
     name: Build and analyze
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: kz_test
+          POSTGRES_USER: kz_test
+          POSTGRES_PASSWORD: kz_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kz_test -d kz_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -43,6 +57,13 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
+
+      - name: PostgreSQL migrations and concurrency
+        env:
+          KZ_TEST_POSTGRES_URL: jdbc:postgresql://127.0.0.1:5432/kz_test
+          KZ_TEST_POSTGRES_USER: kz_test
+          KZ_TEST_POSTGRES_PASSWORD: kz_test
+        run: ./gradlew postgresTest --no-daemon
 
       - name: Build, test, JaCoCo, and SonarCloud
         env:
