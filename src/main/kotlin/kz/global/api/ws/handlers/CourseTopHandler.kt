@@ -40,7 +40,7 @@ class CourseTopHandler(
                     .selectAll()
                     .where {
                         (BestProRecordsTable.mapName eq payload.mapName) and
-                            (MapRecordsTable.flagged eq false)
+                            MapRecordsTable.leaderboardEligible()
                     }
                     .orderBy(MapRecordsTable.timeMs)
                     .limit(limit)
@@ -63,7 +63,7 @@ class CourseTopHandler(
                     .selectAll()
                     .where {
                         (BestNubRecordsTable.mapName eq payload.mapName) and
-                            (MapRecordsTable.flagged eq false)
+                            MapRecordsTable.leaderboardEligible()
                     }
                     .orderBy(MapRecordsTable.timeMs)
                     .limit(limit)

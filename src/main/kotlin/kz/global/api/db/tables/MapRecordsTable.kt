@@ -1,6 +1,8 @@
 package kz.global.api.db.tables
 
 import org.jetbrains.exposed.v1.core.Table
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.datetime.CurrentTimestamp
 import org.jetbrains.exposed.v1.datetime.timestamp
 
@@ -21,6 +23,8 @@ object MapRecordsTable : Table("map_record") {
     val leaderboardPending = bool("leaderboard_pending").default(false)
     val pluginVersionId = integer("plugin_version_id").references(PluginVersionsTable.id)
     val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
+
+    fun leaderboardEligible() = (flagged eq false) and (leaderboardPending eq false)
 
     override val primaryKey = PrimaryKey(id)
 
