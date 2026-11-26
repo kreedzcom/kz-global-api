@@ -7,12 +7,12 @@ import kz.global.api.domain.replays.KrpValidation
 import kz.global.api.domain.replays.ReplayAssemblyResult
 import kz.global.api.domain.replays.ReplayIdentity
 import kz.global.api.domain.replays.ReplayService
-import kz.global.api.domain.replays.TOP_REPLAY_COUNT
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.security.WsRateLimiters
 import kz.global.api.ws.FileAckPayload
 import kz.global.api.ws.GameServerSession
 import kz.global.api.ws.MsgType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -24,7 +24,6 @@ import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.suspendTransaction
 import org.slf4j.LoggerFactory
-import kotlin.uuid.Uuid
 
 class ReplayChunkHandler(
     private val replayService: ReplayService,
@@ -68,100 +67,68 @@ class ReplayChunkHandler(
             }
             is ReplayAssemblyResult.Complete -> {
                 session.socket.launch {
-                    val recordRow = withContext(ioDispatcher) {
-                        suspendTransaction {
-                            MapRecordsTable.selectAll().where {
-                                (MapRecordsTable.localUid eq chunk.localUid) and
-                                    (MapRecordsTable.serverId eq session.serverId)
-                            }.singleOrNull()
-                        }
+                    val status = try {
+                        finishReplay(session.serverId, chunk.localUid, assembly.bytes)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        metrics.replayUploadFailures.increment()
+                        log.error("Server {}: failed to commit replay for {}", session.serverId, chunk.localUid, e)
+                        false
                     }
-
-                    if (recordRow == null || recordRow[MapRecordsTable.replayR2Key] != null) {
-                        session.sendJson(
-                            MsgType.FILE_ACK, 0,
-                            FileAckPayload(localUid = chunk.localUid, status = recordRow != null),
-                        )
-                        return@launch
-                    }
-
-                    val recordId = recordRow[MapRecordsTable.id]
-                    val mapName = recordRow[MapRecordsTable.mapName]
-                    val category = replayService.categoryForGochecks(recordRow[MapRecordsTable.gochecks])
-                    val identity = ReplayIdentity(
-                        steamId = recordRow[MapRecordsTable.playerSteamid],
-                        mapName = mapName,
-                        checkpoints = recordRow[MapRecordsTable.checkpoints],
-                        gochecks = recordRow[MapRecordsTable.gochecks],
-                    )
-                    val validation = validationSlots.withPermit {
-                        withContext(ioDispatcher) { KrpReplayValidator.validate(assembly.bytes, identity) }
-                    }
-                    when (validation) {
-                        is KrpValidation.Rejected -> rejectReplay(session, chunk.localUid, recordId, assembly.bytes, validation.reason)
-                        is KrpValidation.Accepted -> acceptReplay(
-                            session, chunk.localUid, recordId, mapName, category,
-                            recordRow[MapRecordsTable.leaderboardPending], assembly.bytes,
-                        )
-                    }
+                    session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(chunk.localUid, status))
                 }.invokeOnCompletion { assembly.close() }
             }
         }
     }
 
-    private suspend fun acceptReplay(
-        session: GameServerSession,
-        localUid: String,
-        recordId: Uuid,
-        mapName: String,
-        category: String,
-        pending: Boolean,
-        assembled: ByteArray,
-    ) {
-        runCatching {
-            if (pending) {
-                val stagedKey = replayService.stageReplay(recordId, assembled)
-                recordService.finalizePendingLeaderboard(recordId, stagedKey)
-            } else if (replayService.isRecordInTop10(recordId, mapName, category)) {
-                replayService.storeReplay(recordId, assembled)
-                log.info("Server {}: replay stored for record {}", session.serverId, recordId)
-            } else {
-                log.info(
-                    "Server {}: replay skipped for record {} (outside top {})",
-                    session.serverId,
-                    recordId,
-                    TOP_REPLAY_COUNT,
-                )
-            }
-            replayService.pruneReplaysOutsideTop10(mapName, category)
+    private suspend fun findRecord(serverId: Int, localUid: String) = withContext(ioDispatcher) {
+        suspendTransaction {
+            MapRecordsTable.selectAll().where {
+                (MapRecordsTable.localUid eq localUid) and (MapRecordsTable.serverId eq serverId)
+            }.singleOrNull()
         }
-            .onSuccess {
-                session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = localUid, status = true))
-            }
-            .onFailure { e ->
-                metrics.replayUploadFailures.increment()
-                log.error("Server {}: failed to store replay for {}: {}", session.serverId, recordId, e.message)
-                session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = localUid, status = false))
-            }
     }
 
-    private suspend fun rejectReplay(
-        session: GameServerSession,
-        localUid: String,
-        recordId: Uuid,
-        assembled: ByteArray,
-        reason: String,
-    ) {
-        runCatching {
-            check(recordService.flagInvalidReplay(recordId, reason)) { "Record no longer exists" }
-            replayService.storeReplay(recordId, assembled)
-            log.info("Server {}: replay flagged for record {}: {}", session.serverId, recordId, reason)
-            session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = localUid, status = true))
-        }.onFailure { e ->
-            metrics.replayUploadFailures.increment()
-            log.error("Server {}: failed to flag replay for {}: {}", session.serverId, recordId, e.message)
-            session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = localUid, status = false))
+    private suspend fun finishReplay(serverId: Int, localUid: String, bytes: ByteArray): Boolean {
+        val record = findRecord(serverId, localUid) ?: return false
+        if (record[MapRecordsTable.replayR2Key] != null) return true
+
+        val id = record[MapRecordsTable.id]
+        val map = record[MapRecordsTable.mapName]
+        val gochecks = record[MapRecordsTable.gochecks]
+        val category = replayService.categoryForGochecks(gochecks)
+        val identity = ReplayIdentity(record[MapRecordsTable.playerSteamid], map, record[MapRecordsTable.checkpoints], gochecks)
+        val validation = validationSlots.withPermit {
+            withContext(ioDispatcher) { KrpReplayValidator.validate(bytes, identity) }
         }
+        val pending = record[MapRecordsTable.leaderboardPending]
+        val flagged = record[MapRecordsTable.flagged]
+        if (!pending && !flagged) {
+            if (validation is KrpValidation.Rejected) return false
+            if (!replayService.isRecordInTop10(id, map, category)) return true
+        }
+
+        val key = replayService.stageReplay(id, bytes)
+        val committed = when {
+            validation is KrpValidation.Rejected -> recordService.flagInvalidReplay(id, validation.reason, key)
+            pending && !flagged -> recordService.finalizePendingLeaderboard(id, key)
+            else -> replayService.attachReplay(id, key, flagged)
+        }
+        if (!committed) {
+            replayService.discardUnattachedReplay(key)
+            return findRecord(serverId, localUid)?.get(MapRecordsTable.replayR2Key) != null
+        }
+        if (validation is KrpValidation.Accepted && !flagged) {
+            try {
+                replayService.pruneReplaysOutsideTop10(map, category)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.warn("Failed to prune replays for {}", map, e)
+            }
+        }
+        return true
     }
 
 }

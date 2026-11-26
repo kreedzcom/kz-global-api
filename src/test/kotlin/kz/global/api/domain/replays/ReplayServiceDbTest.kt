@@ -103,32 +103,38 @@ class ReplayServiceDbTest {
         }
     }
 
-    // ─── storeReplay ─────────────────────────────────────────────────────────
-
     @Test
-    fun `storeReplay uploads bytes to R2 under replays-slash-uuid-dot-krpz`() = runTest {
+    fun `staging retries creates separate replay objects`() = runTest {
         val recordId = insertRecord("kz_store", "uid-store")
         val bytes = ByteArray(100) { it.toByte() }
 
-        service.storeReplay(recordId, bytes)
+        val firstKey = service.stageReplay(recordId, bytes)
+        val secondKey = service.stageReplay(recordId, bytes)
 
-        assertEquals(1, r2.putCalls.size)
-        assertEquals("replays/$recordId.krpz", r2.putCalls[0].first)
+        assertEquals(2, r2.putCalls.size)
+        assertTrue(firstKey.startsWith("replays/$recordId/"))
+        assertTrue(secondKey.startsWith("replays/$recordId/"))
+        assertTrue(firstKey != secondKey)
         assertContentEquals(bytes, r2.putCalls[0].second)
     }
 
     @Test
-    fun `storeReplay writes r2 key back to map_record`() = runTest {
+    fun `only the first attached replay key is committed`() = runTest {
         val recordId = insertRecord("kz_store2", "uid-store2")
+        val firstKey = service.stageReplay(recordId, ByteArray(10))
+        val secondKey = service.stageReplay(recordId, ByteArray(10))
 
-        service.storeReplay(recordId, ByteArray(10))
+        val first = service.attachReplay(recordId, firstKey, flagged = false)
+        val second = service.attachReplay(recordId, secondKey, flagged = false)
 
+        assertTrue(first)
+        assertFalse(second)
         val savedKey = transaction {
             MapRecordsTable.selectAll()
                 .where { MapRecordsTable.id eq recordId }
                 .single()[MapRecordsTable.replayR2Key]
         }
-        assertEquals("replays/$recordId.krpz", savedKey)
+        assertEquals(firstKey, savedKey)
     }
 
     // ─── getPresignedUrl ─────────────────────────────────────────────────────

@@ -100,6 +100,7 @@ class RecordService(
 
             if (row[MapRecordsTable.flagged]) return@suspendTransaction null
             if (!row[MapRecordsTable.leaderboardPending]) return@suspendTransaction null
+            if (row[MapRecordsTable.replayR2Key] != null) return@suspendTransaction null
 
             val localUid = row[MapRecordsTable.localUid]
             val steamid = row[MapRecordsTable.playerSteamid]
@@ -129,7 +130,7 @@ class RecordService(
         true
     }
 
-    suspend fun flagInvalidReplay(recordId: Uuid, reason: String): Boolean = withContext(ioDispatcher) {
+    suspend fun flagInvalidReplay(recordId: Uuid, reason: String, stagedReplayKey: String? = null): Boolean = withContext(ioDispatcher) {
         val outcome = suspendTransaction {
             if (!lockRecordMap(recordId)) return@suspendTransaction FlagOutcome.Missing
             val row = MapRecordsTable
@@ -137,6 +138,17 @@ class RecordService(
                 .where { MapRecordsTable.id eq recordId }
                 .singleOrNull()
                 ?: return@suspendTransaction FlagOutcome.Missing
+
+            // Upload outcomes compete only while this record is awaiting its first replay.
+            if (stagedReplayKey != null) {
+                if (row[MapRecordsTable.replayR2Key] != null ||
+                    (!row[MapRecordsTable.leaderboardPending] && !row[MapRecordsTable.flagged])
+                ) return@suspendTransaction FlagOutcome.Missing
+
+                MapRecordsTable.update({ MapRecordsTable.id eq recordId }) {
+                    it[replayR2Key] = stagedReplayKey
+                }
+            }
 
             if (row[MapRecordsTable.flagged]) {
                 return@suspendTransaction FlagOutcome.AlreadyFlagged

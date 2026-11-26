@@ -5,9 +5,11 @@ import kz.global.api.db.tables.BestNubRecordsTable
 import kz.global.api.db.tables.BestProRecordsTable
 import kz.global.api.db.tables.MapRecordsTable
 import kz.global.api.db.tables.WorldRecordsTable
+import kz.global.api.domain.records.lockRecordMap
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.storage.R2Client
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.text.Charsets
@@ -193,23 +195,33 @@ class ReplayService(
     }
 
     suspend fun stageReplay(recordId: Uuid, bytes: ByteArray): String {
-        val key = "replays/$recordId.krpz"
+        val key = "replays/$recordId/${Uuid.random()}.krpz"
         r2Client.put(key, bytes)
         metrics.replayUploads.increment()
         return key
     }
 
-    suspend fun storeReplay(recordId: Uuid, bytes: ByteArray) {
-        val r2Key = stageReplay(recordId, bytes)
-
+    suspend fun attachReplay(recordId: Uuid, key: String, flagged: Boolean): Boolean =
         withContext(ioDispatcher) {
             suspendTransaction {
-                MapRecordsTable.update({ MapRecordsTable.id eq recordId }) {
-                    it[MapRecordsTable.replayR2Key] = r2Key
-                }
+                if (!lockRecordMap(recordId)) return@suspendTransaction false
+                MapRecordsTable.update({
+                    (MapRecordsTable.id eq recordId) and
+                        (MapRecordsTable.flagged eq flagged) and
+                        (MapRecordsTable.leaderboardPending eq false) and
+                        MapRecordsTable.replayR2Key.isNull()
+                }) { it[replayR2Key] = key } == 1
             }
         }
-        log.info("Stored replay for record {} at {}", recordId, r2Key)
+
+    suspend fun discardUnattachedReplay(key: String) {
+        try {
+            r2Client.delete(key)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log.warn("Failed to delete unattached replay {}", key, e)
+        }
     }
 
     fun categoryForGochecks(gochecks: Int): String = if (gochecks == 0) "pro" else "nub"
