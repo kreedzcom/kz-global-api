@@ -6,7 +6,7 @@ object WsPayloadValidator {
 
     private val STEAM_ID_REGEX = Regex("^STEAM_[0-5]:\\d+:\\d+$")
     private val MAP_NAME_REGEX = Regex("^[a-zA-Z0-9_\\-.]+$")
-    private val LOCAL_UID_REGEX = Regex("^[a-zA-Z0-9_\\-]{1,64}$")
+    private val LOCAL_UID_REGEX = Regex("^[a-zA-Z0-9_\\-]{1,63}$")
 
     const val MAX_MAP_NAME_LENGTH = 255
     const val MAX_NICKNAME_LENGTH = 64

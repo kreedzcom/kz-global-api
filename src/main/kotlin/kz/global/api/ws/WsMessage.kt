@@ -179,6 +179,7 @@ data class ErrorPayload(val message: String, val retryable: Boolean? = null)
 
 @Serializable
 data class GetReplayAckPayload(
+    @SerialName("record_id") val recordId: String,
     val url: String,
     @SerialName("local_uid") val localUid: String,
     @SerialName("map_name") val mapName: String,

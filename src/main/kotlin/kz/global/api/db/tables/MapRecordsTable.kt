@@ -15,7 +15,7 @@ object MapRecordsTable : Table("map_record") {
     val timeMs = long("time_ms")
     val checkpoints = integer("checkpoints")
     val gochecks = integer("gochecks")
-    val localUid = varchar("local_uid", 64).uniqueIndex()
+    val localUid = varchar("local_uid", 64)
     val replayR2Key = varchar("replay_r2_key", 255).nullable()
     val flagged = bool("flagged").default(false)
     val flagReason = varchar("flag_reason", 255).nullable()
@@ -29,6 +29,7 @@ object MapRecordsTable : Table("map_record") {
     override val primaryKey = PrimaryKey(id)
 
     init {
+        uniqueIndex("uq_map_record_server_uid", serverId, localUid)
         index(false, playerSteamid, mapName)
         index(false, mapName)
         index(false, timeMs)

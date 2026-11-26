@@ -6,12 +6,13 @@ CREATE TABLE IF NOT EXISTS map_record (
     time_ms           BIGINT       NOT NULL,
     checkpoints       INTEGER      NOT NULL,
     gochecks          INTEGER      NOT NULL,
-    local_uid         VARCHAR(64)  NOT NULL UNIQUE,
+    local_uid         VARCHAR(64)  NOT NULL,
     replay_r2_key     VARCHAR(255),
     flagged           BOOLEAN      NOT NULL DEFAULT FALSE,
     reviewed          BOOLEAN      NOT NULL DEFAULT FALSE,
     plugin_version_id INTEGER      NOT NULL REFERENCES plugin_version(id),
-    created_at        TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+    created_at        TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_map_record_server_uid UNIQUE (server_id, local_uid)
 );
 
 CREATE INDEX IF NOT EXISTS idx_map_record_player_map    ON map_record(player_steamid, map_name);
