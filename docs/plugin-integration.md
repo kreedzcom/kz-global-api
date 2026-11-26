@@ -65,12 +65,13 @@ When the plugin wants the WR replay for a map (e.g. on map load if no local `.kr
   "data": {
     "url": "https://r2.../replays/...krpz",
     "local_uid": "0_00012345_steam_abc",
+    "record_id": "01970000-0000-7000-8000-000000000000",
     "map_name": "kz_longjumps2"
   }
 }
 ```
 
-Download the file over **HTTPS only** from the presigned URL (1-hour expiry), verify zstd magic bytes, save as `kz_global/replays/{map_name}/{local_uid}.krpz`, then load for bot playback.
+Download the file over **HTTPS only** from the presigned URL (1-hour expiry), verify zstd magic bytes, save as `kz_global/replays/{map_name}/{local_uid}_{record_id}.krpz`, then load for bot playback.
 
 ## 4. Handle `del_record_notify` (message type 109)
 
@@ -88,7 +89,7 @@ When an admin deletes or flags a record, the API broadcasts:
 }
 ```
 
-The plugin deletes `kz_global/replays/{map_name}/{local_uid}.krpz` (and `.krpr` if present) and resets the replay bot if it was playing that file.
+The plugin deletes `kz_global/replays/{map_name}/{local_uid}_{record_id}.krpz`, invalidates pending downloads for the deleted record, and resets the replay bot if it was playing that file. Pass the UUID to `kz_api_del_record` to delete a downloaded replay through Pawn.
 
 ## 5. Replay download on map load
 
