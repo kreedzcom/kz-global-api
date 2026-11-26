@@ -64,13 +64,24 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
 }
 
 tasks.test {
-    useJUnitPlatform()
+    useJUnitPlatform { excludeTags("postgres") }
     jvmArgs(
         "-XX:+EnableDynamicAgentLoading",
         "-Xshare:off",
         // MockK / Byte Buddy: JDK 24+ class file versions need experimental mode until Byte Buddy catches up.
         "-Dnet.bytebuddy.experimental=true",
     )
+}
+
+tasks.register<Test>("postgresTest") {
+    description = "Tests Flyway and record concurrency against a dedicated PostgreSQL database"
+    group = "verification"
+    val tests = sourceSets.test.get()
+    testClassesDirs = tests.output.classesDirs
+    classpath = tests.runtimeClasspath
+    useJUnitPlatform { includeTags("postgres") }
+    jvmArgs(tasks.test.get().jvmArgs.orEmpty())
+    outputs.upToDateWhen { false }
 }
 
 tasks.jacocoTestReport {

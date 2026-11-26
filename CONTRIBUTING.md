@@ -4,7 +4,7 @@
 
 1. Fork the repo and clone it locally
 2. Copy `.env.example` to `.env` and fill in values (a local Postgres instance or Docker works)
-3. Run `./gradlew build` to verify everything compiles and tests pass
+3. Run `./gradlew build` to run the normal tests. The `postgresTest` task checks migrations and concurrent leaderboard writes against a fresh, disposable PostgreSQL database configured with `KZ_TEST_POSTGRES_URL`, `KZ_TEST_POSTGRES_USER`, and `KZ_TEST_POSTGRES_PASSWORD`.
 
 ## Making changes
 
