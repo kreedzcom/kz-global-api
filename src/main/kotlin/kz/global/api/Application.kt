@@ -116,7 +116,7 @@ fun Application.module() {
             }
             call.respond(prometheusRegistry.scrape())
         }
-        gameServerWsRoute()
+        gameServerWsRoute(config.security.trustedGameServerProxies)
         serversRoute()
         pluginVersionsRoute()
         recordsRoute()
