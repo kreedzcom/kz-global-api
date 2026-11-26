@@ -3,6 +3,10 @@
 PostgreSQL in production. Flyway manages all migrations from `src/main/resources/db/migration/`.  
 H2 (PostgreSQL compatibility mode) is used in tests — see `TestDatabase` in `src/test`.
 
+### Pre-launch rollout
+
+The server-scoped replay identity change revises migration V2. Use a fresh PostgreSQL schema for this pre-launch rollout. A database with the previous V2 applied will fail Flyway checksum validation. Preserve any data you need before resetting a pre-launch database. An environment that must retain its existing data needs a forward migration before adopting this change.
+
 ---
 
 ## Entity-relationship overview
