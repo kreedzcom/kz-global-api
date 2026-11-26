@@ -22,6 +22,7 @@ import kz.global.api.util.uuidV7
 import kz.global.api.ws.ConnectedServersRegistry
 import kz.global.api.ws.MsgType
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.*
 import org.jetbrains.exposed.v1.core.eq
@@ -184,14 +185,14 @@ class ReplayChunkHandlerTest {
         assertEquals(MsgType.FILE_ACK, frame.msgType)
         assertTrue(frame.data.jsonObject["status"]!!.jsonPrimitive.boolean)
         assertEquals(1, r2.putCalls.size)
-        assertEquals("replays/$recordId.krpz", r2.putCalls[0].first)
+        assertTrue(r2.putCalls[0].first.startsWith("replays/$recordId/"))
 
         val savedKey = transaction {
             MapRecordsTable.selectAll()
                 .where { MapRecordsTable.id eq recordId }
                 .single()[MapRecordsTable.replayR2Key]
         }
-        assertEquals("replays/$recordId.krpz", savedKey)
+        assertEquals(r2.putCalls.single().first, savedKey)
     }
 
     @Test
@@ -297,7 +298,7 @@ class ReplayChunkHandlerTest {
         handler.handle(session, ReplayServiceTest.buildChunk("uid-bad", payload, 0, 1))
 
         assertTrue(sent().single().data.jsonObject["status"]!!.jsonPrimitive.boolean)
-        assertEquals("replays/$recordId.krpz", r2.putCalls.single().first)
+        assertTrue(r2.putCalls.single().first.startsWith("replays/$recordId/"))
         transaction {
             val row = MapRecordsTable.selectAll().where { MapRecordsTable.id eq recordId }.single()
             assertTrue(row[MapRecordsTable.flagged])
@@ -322,11 +323,48 @@ class ReplayChunkHandlerTest {
         handler.handle(session, chunk)
 
         assertEquals(listOf(false, true, true), sent().map { it.data.jsonObject["status"]!!.jsonPrimitive.boolean })
-        assertEquals("replays/$recordId.krpz", r2.putCalls.single().first)
+        assertTrue(r2.putCalls.single().first.startsWith("replays/$recordId/"))
         transaction {
             val record = MapRecordsTable.selectAll().where { MapRecordsTable.id eq recordId }.single()
             assertTrue(record[MapRecordsTable.flagged])
             assertEquals(0L, BestProRecordsTable.selectAll().count())
+        }
+    }
+
+    @Test
+    fun `overlapping invalid upload cannot replace committed ranked replay`() = runTest {
+        val map = "kz_overlap"
+        val uid = "uid-overlap"
+        val recordId = insertRecord(serverId, map, uid, leaderboardPending = true)
+        val (session, sent) = mockSession(serverId)
+        val started = CompletableDeferred<String>()
+        val release = CompletableDeferred<Unit>()
+        val delayedR2 = object : R2Client(R2Config("https://fake.r2", "key", "secret", "bucket"), io.mockk.mockk(relaxed = true)) {
+            override suspend fun put(key: String, bytes: ByteArray) {
+                started.complete(key)
+                release.await()
+                r2.put(key, bytes)
+            }
+            override suspend fun delete(key: String) = r2.delete(key)
+        }
+        val delayed = ReplayChunkHandler(
+            ReplayService(delayedR2, metrics, testSecurityConfig(), ioDispatcher = testDispatcher),
+            recordService, metrics, testWsRateLimiters(), ioDispatcher = testDispatcher,
+        )
+
+        delayed.handle(session, ReplayServiceTest.buildChunk(uid, ReplayServiceTest.ZSTD_MAGIC + ByteArray(8), 0, 1))
+        val losingKey = started.await()
+        handler.handle(session, ReplayServiceTest.buildChunk(uid, replayFor(map), 0, 1))
+        release.complete(Unit)
+
+        assertEquals(2, sent().size)
+        assertEquals(listOf(losingKey), r2.deleteCalls)
+        assertEquals(2, r2.putCalls.map { it.first }.toSet().size)
+        transaction {
+            val record = MapRecordsTable.selectAll().where { MapRecordsTable.id eq recordId }.single()
+            assertEquals(r2.putCalls.first().first, record[MapRecordsTable.replayR2Key])
+            assertFalse(record[MapRecordsTable.flagged])
+            assertFalse(record[MapRecordsTable.leaderboardPending])
         }
     }
 
