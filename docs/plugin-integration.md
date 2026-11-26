@@ -46,6 +46,8 @@ Every finished run must include **`gochecks`** (go-check count) and **`checkpoin
 - **`gochecks == 0`** — **pro** only ( **`checkpoints` may be zero** on linear maps with no intermediate checkpoints).
 - **`gochecks > 0`** — **nub** only; **`checkpoints` must be positive**.
 
+On `FILE_ACK` with `status: true`, retire the upload. If `playable` is `false`, discard the local upload copy without adding it to the replay bot cache. Upgrade the API and module together to distinguish retained evidence from playable replays.
+
 ## 3. Handle `get_replay` (message type 9)
 
 When the plugin wants the WR replay for a map (e.g. on map load if no local `.krpz` found):

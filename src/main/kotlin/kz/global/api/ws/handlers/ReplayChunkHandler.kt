@@ -67,16 +67,16 @@ class ReplayChunkHandler(
             }
             is ReplayAssemblyResult.Complete -> {
                 session.socket.launch {
-                    val status = try {
+                    val playable = try {
                         finishReplay(session.serverId, chunk.localUid, assembly.bytes)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
                         metrics.replayUploadFailures.increment()
                         log.error("Server {}: failed to commit replay for {}", session.serverId, chunk.localUid, e)
-                        false
+                        null
                     }
-                    session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(chunk.localUid, status))
+                    session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(chunk.localUid, playable != null, playable))
                 }.invokeOnCompletion { assembly.close() }
             }
         }
@@ -90,9 +90,11 @@ class ReplayChunkHandler(
         }
     }
 
-    private suspend fun finishReplay(serverId: Int, localUid: String, bytes: ByteArray): Boolean {
-        val record = findRecord(serverId, localUid) ?: return false
-        if (record[MapRecordsTable.replayR2Key] != null) return true
+    private suspend fun finishReplay(serverId: Int, localUid: String, bytes: ByteArray): Boolean? {
+        val record = findRecord(serverId, localUid) ?: return null
+        val flagged = record[MapRecordsTable.flagged]
+        val existingKey = record[MapRecordsTable.replayR2Key]
+        if (flagged && existingKey != null) return false
 
         val id = record[MapRecordsTable.id]
         val map = record[MapRecordsTable.mapName]
@@ -102,10 +104,10 @@ class ReplayChunkHandler(
         val validation = validationSlots.withPermit {
             withContext(ioDispatcher) { KrpReplayValidator.validate(bytes, identity) }
         }
+        if (existingKey != null) return validation is KrpValidation.Accepted
         val pending = record[MapRecordsTable.leaderboardPending]
-        val flagged = record[MapRecordsTable.flagged]
         if (!pending && !flagged) {
-            if (validation is KrpValidation.Rejected) return false
+            if (validation is KrpValidation.Rejected) return null
             if (!replayService.isRecordInTop10(id, map, category)) return true
         }
 
@@ -117,7 +119,9 @@ class ReplayChunkHandler(
         }
         if (!committed) {
             replayService.discardUnattachedReplay(key)
-            return findRecord(serverId, localUid)?.get(MapRecordsTable.replayR2Key) != null
+            val winner = findRecord(serverId, localUid) ?: return null
+            if (winner[MapRecordsTable.replayR2Key] == null) return null
+            return validation is KrpValidation.Accepted && !winner[MapRecordsTable.flagged]
         }
         if (validation is KrpValidation.Accepted && !flagged) {
             try {
@@ -128,7 +132,7 @@ class ReplayChunkHandler(
                 log.warn("Failed to prune replays for {}", map, e)
             }
         }
-        return true
+        return validation is KrpValidation.Accepted && !flagged
     }
 
 }

@@ -347,10 +347,10 @@ For a pending run, the API stages each upload under a unique object key, then co
 `FILE_ACK` (106) response:
 
 ```json
-{ "local_uid": "server-side-unique-string", "status": true }
+{ "local_uid": "server-side-unique-string", "status": true, "playable": true }
 ```
 
-`status: false` indicates a transport failure (bad CRC, missing ZSTD magic, unknown `local_uid`, or a store error on a replay that otherwise matched). The plugin retries those.
+`status: false` leaves the upload pending for retry. `status: true` allows the plugin to retire the upload. Only `playable: true` permits adding the replay to the playback cache. `playable: false` covers flagged evidence or a rejected duplicate whose record already has a durable replay outcome. Update the API and plugin together to apply this distinction. Older APIs omit `playable`.
 
 ---
 

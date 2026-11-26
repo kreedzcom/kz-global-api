@@ -134,6 +134,7 @@ data class RecordAckPayload(
 data class FileAckPayload(
     @SerialName("local_uid") val localUid: String,
     val status: Boolean,
+    val playable: Boolean? = null,
 )
 
 @Serializable
