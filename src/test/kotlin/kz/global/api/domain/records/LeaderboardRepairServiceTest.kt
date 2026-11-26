@@ -52,7 +52,13 @@ class LeaderboardRepairServiceTest {
     fun `repair promotes next fastest pro WR after WR delete`() {
         val wrId = insertRecord("kz_wr", "STEAM_0:0:1", 20_000L, 0, 0, "uid-wr")
         val nextId = insertRecord("kz_wr", "STEAM_0:0:2", 25_000L, 0, 0, "uid-next")
+        val pendingId = insertRecord("kz_wr", "STEAM_0:0:1", 15_000L, 0, 0, "uid-pending")
         setWr("kz_wr", "pro", wrId)
+        transaction {
+            MapRecordsTable.update({ MapRecordsTable.id eq pendingId }) {
+                it[leaderboardPending] = true
+            }
+        }
 
         transaction {
             MapRecordsTable.deleteWhere { MapRecordsTable.id eq wrId }
@@ -76,6 +82,7 @@ class LeaderboardRepairServiceTest {
 
             assertEquals(nextId, result.newWrProId)
             assertTrue(result.wrProChanged)
+            assertEquals(0L, BestProRecordsTable.selectAll().count())
         }
     }
 

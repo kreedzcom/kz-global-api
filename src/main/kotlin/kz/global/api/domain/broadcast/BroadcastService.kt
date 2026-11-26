@@ -82,7 +82,7 @@ class BroadcastService(
             .where {
                 (WorldRecordsTable.mapName eq mapName) and
                 (WorldRecordsTable.category eq category) and
-                (MapRecordsTable.flagged eq false)
+                MapRecordsTable.leaderboardEligible()
             }
             .singleOrNull()
             ?.let { row ->

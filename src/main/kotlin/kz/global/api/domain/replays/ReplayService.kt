@@ -304,7 +304,7 @@ class ReplayService(
                     .where {
                         (WorldRecordsTable.mapName eq mapName) and
                             (WorldRecordsTable.category eq category) and
-                            (MapRecordsTable.flagged eq false) and
+                            MapRecordsTable.leaderboardEligible() and
                             MapRecordsTable.replayR2Key.isNotNull()
                     }
                     .singleOrNull()
@@ -322,7 +322,7 @@ class ReplayService(
                 .where {
                     (WorldRecordsTable.mapName eq mapName) and
                         (WorldRecordsTable.category eq "pro") and
-                        (MapRecordsTable.flagged eq false)
+                        MapRecordsTable.leaderboardEligible()
                 }
                 .limit(1)
                 .any()
@@ -336,7 +336,8 @@ class ReplayService(
                     .selectAll()
                     .where {
                         (WorldRecordsTable.mapName eq mapName) and
-                            (WorldRecordsTable.category eq category)
+                            (WorldRecordsTable.category eq category) and
+                            MapRecordsTable.leaderboardEligible()
                     }
                     .singleOrNull()
                     ?.get(MapRecordsTable.replayR2Key)
@@ -393,7 +394,7 @@ class ReplayService(
             BestProRecordsTable
                 .join(MapRecordsTable, JoinType.INNER, BestProRecordsTable.recordId, MapRecordsTable.id)
                 .select(BestProRecordsTable.recordId)
-                .where { BestProRecordsTable.mapName eq mapName }
+                .where { (BestProRecordsTable.mapName eq mapName) and MapRecordsTable.leaderboardEligible() }
                 .orderBy(MapRecordsTable.timeMs)
                 .limit(TOP_REPLAY_COUNT)
                 .map { it[BestProRecordsTable.recordId] }
@@ -402,7 +403,7 @@ class ReplayService(
             BestNubRecordsTable
                 .join(MapRecordsTable, JoinType.INNER, BestNubRecordsTable.recordId, MapRecordsTable.id)
                 .select(BestNubRecordsTable.recordId)
-                .where { BestNubRecordsTable.mapName eq mapName }
+                .where { (BestNubRecordsTable.mapName eq mapName) and MapRecordsTable.leaderboardEligible() }
                 .orderBy(MapRecordsTable.timeMs)
                 .limit(TOP_REPLAY_COUNT)
                 .map { it[BestNubRecordsTable.recordId] }

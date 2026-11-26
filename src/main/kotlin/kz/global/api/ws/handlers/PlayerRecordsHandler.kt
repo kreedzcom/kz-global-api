@@ -45,8 +45,7 @@ class PlayerRecordsHandler(
                 .where {
                     (MapRecordsTable.playerSteamid eq payload.steamid) and
                         (MapRecordsTable.mapName eq payload.mapName) and
-                        (MapRecordsTable.flagged eq false) and
-                        (MapRecordsTable.leaderboardPending eq false)
+                        MapRecordsTable.leaderboardEligible()
                 }
                 .orderBy(MapRecordsTable.timeMs)
                 .limit(effectiveLimit)

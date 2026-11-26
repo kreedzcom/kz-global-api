@@ -190,7 +190,7 @@ class LeaderboardRepairService {
 
         var condition: Op<Boolean> =
             (MapRecordsTable.mapName eq mapName) and
-                (MapRecordsTable.flagged eq false) and
+                MapRecordsTable.leaderboardEligible() and
                 gocheckFilter
 
         if (playerSteamid != null) {
