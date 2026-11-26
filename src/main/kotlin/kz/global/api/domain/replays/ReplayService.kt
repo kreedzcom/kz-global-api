@@ -13,6 +13,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.text.Charsets
 import kotlin.time.Clock
 import org.jetbrains.exposed.v1.core.*
@@ -24,6 +25,7 @@ import org.slf4j.LoggerFactory
 import kotlin.time.Duration.Companion.minutes
 import kotlin.uuid.Uuid
 import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.seconds
 
 // Binary header: packed `ws_uchunk_header` from cs16kz `kz_ws.h` (pragma pack 1), 92 bytes:
 //   local_uid[64]:  char[64]
@@ -262,18 +264,36 @@ class ReplayService(
 
         var pruned = 0
         for ((recordId, r2Key) in toDelete) {
-            runCatching { r2Client.delete(r2Key) }
-                .onSuccess {
-                    pruned++
-                    withContext(ioDispatcher) {
-                        suspendTransaction {
-                            MapRecordsTable.update({ MapRecordsTable.id eq recordId }) {
-                                it[MapRecordsTable.replayR2Key] = null
-                            }
+            try {
+                val deleted = withContext(ioDispatcher) {
+                    suspendTransaction {
+                        maxAttempts = 1
+                        if (!lockRecordMap(recordId)) return@suspendTransaction false
+                        val current = MapRecordsTable.selectAll()
+                            .where { MapRecordsTable.id eq recordId }.singleOrNull()
+                            ?: return@suspendTransaction false
+                        if (current[MapRecordsTable.flagged] ||
+                            current[MapRecordsTable.replayR2Key] != r2Key ||
+                            recordId in findTop10RecordIds(mapName, category)
+                        ) return@suspendTransaction false
+
+                        // Keep this decision serialized with leaderboard repair and replay attachment.
+                        if (withTimeoutOrNull(3.seconds) { r2Client.delete(r2Key); true } != true) {
+                            log.warn("Timed out deleting replay {}", r2Key)
+                            return@suspendTransaction false
                         }
+                        MapRecordsTable.update({ MapRecordsTable.id eq recordId }) {
+                            it[MapRecordsTable.replayR2Key] = null
+                        }
+                        true
                     }
                 }
-                .onFailure { log.warn("Failed to delete replay {}: {}", r2Key, it.message) }
+                if (deleted) pruned++
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.warn("Failed to delete replay {}", r2Key, e)
+            }
         }
         if (pruned > 0) {
             log.info("Pruned {} replays outside top {} for map={} category={}", pruned, TOP_REPLAY_COUNT, mapName, category)

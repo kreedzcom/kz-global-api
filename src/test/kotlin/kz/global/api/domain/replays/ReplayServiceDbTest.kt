@@ -37,6 +37,7 @@ class FakeR2Client : R2Client(
     val presignCalls = mutableListOf<String>()
     val getCalls = mutableListOf<String>()
     val getResponses = mutableMapOf<String, ByteArray>()
+    var failDeletes = false
 
     override suspend fun put(key: String, bytes: ByteArray) {
         putCalls += key to bytes
@@ -50,6 +51,7 @@ class FakeR2Client : R2Client(
 
     override suspend fun delete(key: String) {
         deleteCalls += key
+        check(!failDeletes) { "R2 unavailable" }
     }
 
     override suspend fun presignedGetUrl(key: String): String {
@@ -437,6 +439,23 @@ class ReplayServiceDbTest {
             }
             assertNull(MapRecordsTable.selectAll().where { MapRecordsTable.id eq outsideId }.single()[MapRecordsTable.replayR2Key])
         }
+    }
+
+    @Test
+    fun `pruning retries a replay key after object deletion fails`() = runTest {
+        val recordId = insertRecord("kz_retry_prune", "uid-retry-prune")
+        val key = "replays/$recordId.krpz"
+        transaction { MapRecordsTable.update({ MapRecordsTable.id eq recordId }) { it[replayR2Key] = key } }
+        r2.failDeletes = true
+
+        service.pruneReplaysOutsideTop10("kz_retry_prune", "pro")
+        val keyAfterFailure = transaction { MapRecordsTable.selectAll().single()[MapRecordsTable.replayR2Key] }
+        r2.failDeletes = false
+        service.pruneReplaysOutsideTop10("kz_retry_prune", "pro")
+
+        assertEquals(key, keyAfterFailure)
+        assertEquals(listOf(key, key), r2.deleteCalls)
+        transaction { assertNull(MapRecordsTable.selectAll().single()[MapRecordsTable.replayR2Key]) }
     }
 
     @Test
