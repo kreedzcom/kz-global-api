@@ -10,7 +10,6 @@ import kz.global.api.events.KzEventBus
 import kz.global.api.metrics.KzMetrics
 import kz.global.api.domain.players.PlayerBanService
 import kz.global.api.support.TestDatabase
-import kz.global.api.support.testReplayService
 import kz.global.api.support.testSecurityConfig
 import kz.global.api.support.testWsRateLimiters
 import kz.global.api.support.testWsRateLimitersStrict
@@ -36,7 +35,6 @@ class AddRecordHandlerTest {
         metrics = KzMetrics(SimpleMeterRegistry(), ConnectedServersRegistry()),
         playerBanService = PlayerBanService(AuditLogger()),
         security = testSecurityConfig(),
-        replayService = testReplayService(),
     )
     private val handler = AddRecordHandler(recordService, testWsRateLimiters())
 

@@ -31,6 +31,14 @@ data class RepairResult(
     val wrChanged: Boolean get() = wrProChanged || wrNubChanged
 }
 
+/** Acquire the map lock before touching any of its leaderboard rows. */
+internal fun lockRecordMap(recordId: Uuid): Boolean {
+    val mapName = MapRecordsTable.select(MapRecordsTable.mapName)
+        .where { MapRecordsTable.id eq recordId }
+        .singleOrNull()?.get(MapRecordsTable.mapName) ?: return false
+    return MapsTable.select(MapsTable.name).where { MapsTable.name eq mapName }.forUpdate().singleOrNull() != null
+}
+
 class LeaderboardRepairService {
 
     fun captureWrIds(mapName: String): Pair<Uuid?, Uuid?> =

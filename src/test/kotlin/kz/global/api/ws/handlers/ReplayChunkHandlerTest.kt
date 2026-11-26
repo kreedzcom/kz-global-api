@@ -73,7 +73,6 @@ class ReplayChunkHandlerTest {
             metrics,
             PlayerBanService(AuditLogger()),
             testSecurityConfig(),
-            replayService,
             ioDispatcher = testDispatcher,
         )
         handler = ReplayChunkHandler(
@@ -206,8 +205,7 @@ class ReplayChunkHandlerTest {
             testWsRateLimiters(),
             ioDispatcher = testDispatcher,
         )
-        val failId = insertRecord(serverId, "kz_fail", "uid-store-fail")
-        insertBestPro(steamid, "kz_fail", failId)
+        val failId = insertRecord(serverId, "kz_fail", "uid-store-fail", leaderboardPending = true)
         val (session, sent) = mockSession(serverId)
         val payload = replayFor("kz_fail")
 
@@ -216,6 +214,12 @@ class ReplayChunkHandlerTest {
         val frame = sent().single()
         assertEquals(MsgType.FILE_ACK, frame.msgType)
         assertFalse(frame.data.jsonObject["status"]!!.jsonPrimitive.boolean)
+        transaction {
+            val row = MapRecordsTable.selectAll().where { MapRecordsTable.id eq failId }.single()
+            assertTrue(row[MapRecordsTable.leaderboardPending])
+            assertNull(row[MapRecordsTable.replayR2Key])
+            assertEquals(0, BestProRecordsTable.selectAll().count())
+        }
     }
 
     @Test
@@ -232,7 +236,6 @@ class ReplayChunkHandlerTest {
             metrics,
             PlayerBanService(AuditLogger()),
             testSecurityConfig(requireReplayForLeaderboard = true),
-            replayRequired,
             ioDispatcher = testDispatcher,
         )
         val pendingHandler = ReplayChunkHandler(

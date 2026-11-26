@@ -179,9 +179,15 @@ class ReplayService(
         return ReplayAssemblyResult.Complete(assembled)
     }
 
+    suspend fun stageReplay(recordId: Uuid, bytes: ByteArray): String {
+        val key = "replays/$recordId.krpz"
+        r2Client.put(key, bytes)
+        metrics.replayUploads.increment()
+        return key
+    }
+
     suspend fun storeReplay(recordId: Uuid, bytes: ByteArray) {
-        val r2Key = "replays/$recordId.krpz"
-        r2Client.put(r2Key, bytes)
+        val r2Key = stageReplay(recordId, bytes)
 
         withContext(ioDispatcher) {
             suspendTransaction {
@@ -190,7 +196,6 @@ class ReplayService(
                 }
             }
         }
-        metrics.replayUploads.increment()
         log.info("Stored replay for record {} at {}", recordId, r2Key)
     }
 
