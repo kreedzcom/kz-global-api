@@ -156,12 +156,8 @@ class ReplayChunkHandler(
         reason: String,
     ) {
         runCatching {
-            recordService.flagInvalidReplay(recordId, reason)
-            runCatching { replayService.storeReplay(recordId, assembled) }
-                .onFailure { e ->
-                    metrics.replayUploadFailures.increment()
-                    log.error("Server {}: failed to store flagged replay for {}: {}", session.serverId, recordId, e.message)
-                }
+            check(recordService.flagInvalidReplay(recordId, reason)) { "Record no longer exists" }
+            replayService.storeReplay(recordId, assembled)
             log.info("Server {}: replay flagged for record {}: {}", session.serverId, recordId, reason)
             session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = localUid, status = true))
         }.onFailure { e ->

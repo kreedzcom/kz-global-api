@@ -342,7 +342,7 @@ After a run is accepted with `RECORD_ACK`, the plugin may upload the replay as a
 
 Once all chunks are received and CRC-validated, the API assembles them and verifies the ZSTD magic header (`0x28 0xB5 0x2F 0xFD`). It then decompresses the body (capped at 100 MiB) and checks that it is a KRP v1 file: magic, version, and section sizes. Frame bytes are not reconstructed. The 256-byte header must match the submitted run's SteamID, map name, checkpoints, and gochecks.
 
-For a pending run, the API stores the matching replay before committing personal-best and world-record updates. An interrupted upload can retry under the same record ID. The API prunes files outside the replay retention limit. A replay that does not decode or whose header does not match is flagged (`flag_reason` set), kept off the leaderboards, and stored for review. That outcome is still `FILE_ACK` with `status: true`, so the plugin does not upload the same file again.
+For a pending run, the API stores the matching replay before committing personal-best and world-record updates. An interrupted upload can retry under the same record ID. The API prunes files outside the replay retention limit. A replay that does not decode or whose header does not match is flagged (`flag_reason` set), kept off the leaderboards, and stored for review. That outcome receives `FILE_ACK` with `status: true` once the evidence is stored durably. A storage failure returns `status: false` and the flag remains set.
 
 `FILE_ACK` (106) response:
 
