@@ -307,6 +307,29 @@ class ReplayChunkHandlerTest {
         }
     }
 
+    @Test
+    fun `invalid replay evidence retries after failed storage without promotion`() = runTest {
+        val unavailable = ReplayService(ThrowingR2Client(), metrics, testSecurityConfig(), ioDispatcher = testDispatcher)
+        val failingHandler = ReplayChunkHandler(
+            unavailable, recordService, metrics, testWsRateLimiters(), ioDispatcher = testDispatcher,
+        )
+        val recordId = insertRecord(serverId, "kz_retry_evidence", "uid-evidence", leaderboardPending = true)
+        val (session, sent) = mockSession(serverId)
+        val chunk = ReplayServiceTest.buildChunk("uid-evidence", ReplayServiceTest.ZSTD_MAGIC + ByteArray(8), 0, 1)
+
+        failingHandler.handle(session, chunk)
+        handler.handle(session, chunk)
+        handler.handle(session, chunk)
+
+        assertEquals(listOf(false, true, true), sent().map { it.data.jsonObject["status"]!!.jsonPrimitive.boolean })
+        assertEquals("replays/$recordId.krpz", r2.putCalls.single().first)
+        transaction {
+            val record = MapRecordsTable.selectAll().where { MapRecordsTable.id eq recordId }.single()
+            assertTrue(record[MapRecordsTable.flagged])
+            assertEquals(0L, BestProRecordsTable.selectAll().count())
+        }
+    }
+
     private fun replayFor(map: String) = KrpFixtures.compress(steamid, map, checkpoints = 0, gochecks = 0)
 
     private fun steamidFor(index: Int) = "STEAM_0:0:top$index"
