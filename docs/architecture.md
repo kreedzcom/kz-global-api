@@ -275,7 +275,7 @@ Replays are uploaded as a sequence of binary WebSocket frames, each containing a
 
 `ReplayService` validates each chunk's CRC32, assembles them in memory (with per-server concurrency, TTL, and max-byte caps), and verifies the ZSTD magic bytes (`0x28 0xB5 0x2F 0xFD`). `KrpReplayValidator` decompresses the body (100 MiB cap), checks KRP v1 structure, and compares header identity to the submitted run. Each completed upload stages a unique object under `replays/{record_uuid}/{attempt_uuid}.krpz`. PostgreSQL commits the winning key with the ranking or flag outcome. Flagged evidence is retained outside the top 10. Each in-flight upload is bound to the `server_id` that started it.
 
-**Top-10 retention:** replays of unflagged records are stored only for runs in the top 10 fastest player bests on a map (separate pro/nub leaderboards, same query as `COURSE_TOP`). After each leaderboard change or replay upload, replays for displaced records are deleted from R2 and `replay_r2_key` is cleared — except for **flagged** records, which keep their replay until an admin deletes the record (so flagged runs remain reviewable in the admin UI).
+**Top-10 retention:** the API retains unflagged replays for the ten fastest player bests in each map and category, using the same ranking as `COURSE_TOP`. Pruning rechecks each candidate under the map's leaderboard lock before deleting its object and clearing the key. Flagged evidence stays available for review until an admin deletes the record. A historical run promoted after its replay was pruned can have an unavailable replay.
 
 ---
 
