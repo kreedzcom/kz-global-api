@@ -136,7 +136,7 @@ A single completed run.
 | `time_ms` | `BIGINT` NOT NULL | Run time in milliseconds |
 | `checkpoints` | `INTEGER` NOT NULL | Aggregate count of checkpoints touched in the run (not split times). Must be **`> 0`** whenever **`gochecks > 0`** (enforced on ingest). |
 | `gochecks` | `INTEGER` NOT NULL | Go-check count; **`gochecks == 0`** → **pro** only; **`> 0`** → **nub** only |
-| `local_uid` | `VARCHAR(64)` UNIQUE NOT NULL | Server-generated idempotency key |
+| `local_uid` | `VARCHAR(64)` NOT NULL | Idempotency key. The pair `(server_id, local_uid)` is unique. |
 | `replay_r2_key` | `VARCHAR(255)` | R2 object key once replay is uploaded (`replays/{uuid}.krpz`) |
 | `flagged` | `BOOLEAN` NOT NULL DEFAULT `false` | Anti-cheat review flag |
 | `flag_reason` | `VARCHAR(255)` | Why an uploaded replay was flagged (V7). Null until then |

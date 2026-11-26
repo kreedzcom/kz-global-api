@@ -117,10 +117,10 @@ class ReplayChunkHandler(
         assembled: ByteArray,
     ) {
         runCatching {
-            recordService.finalizePendingLeaderboard(localUid)
+            recordService.finalizePendingLeaderboard(recordId)
 
             if (replayService.isRecordInTop10(recordId, mapName, category)) {
-                replayService.storeReplay(recordId, localUid, assembled)
+                replayService.storeReplay(recordId, assembled)
                 log.info("Server {}: replay stored for record {}", session.serverId, recordId)
             } else {
                 log.info(
@@ -150,8 +150,8 @@ class ReplayChunkHandler(
         reason: String,
     ) {
         runCatching {
-            recordService.flagInvalidReplay(localUid, reason)
-            runCatching { replayService.storeReplay(recordId, localUid, assembled) }
+            recordService.flagInvalidReplay(recordId, reason)
+            runCatching { replayService.storeReplay(recordId, assembled) }
                 .onFailure { e ->
                     metrics.replayUploadFailures.increment()
                     log.error("Server {}: failed to store flagged replay for {}: {}", session.serverId, recordId, e.message)

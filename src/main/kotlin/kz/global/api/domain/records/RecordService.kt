@@ -34,7 +34,7 @@ sealed class RecordResult {
 private sealed class FlagOutcome {
     data object Missing : FlagOutcome()
     data object AlreadyFlagged : FlagOutcome()
-    data class Flagged(val recordId: Uuid, val serverId: Int) : FlagOutcome()
+    data class Flagged(val recordId: Uuid, val serverId: Int, val localUid: String) : FlagOutcome()
 }
 
 private data class LeaderboardResult(
@@ -60,6 +60,10 @@ class RecordService(
         pluginVersionId: Int,
         payload: AddRecordPayload,
     ): RecordResult {
+        withContext(ioDispatcher) {
+            suspendTransaction { findDuplicate(serverId, payload) }
+        }?.let { return it }
+
         if (playerBanService.isBanned(payload.steamid)) {
             metrics.recordRejected(RecordRejectReason.BANNED)
             return RecordResult.Rejected("Player is banned")
@@ -87,18 +91,18 @@ class RecordService(
         return txResult as RecordResult
     }
 
-    suspend fun finalizePendingLeaderboard(localUid: String): Boolean = withContext(ioDispatcher) {
+    suspend fun finalizePendingLeaderboard(recordId: Uuid): Boolean = withContext(ioDispatcher) {
         val finalized = suspendTransaction {
             val row = MapRecordsTable
                 .selectAll()
-                .where { MapRecordsTable.localUid eq localUid }
+                .where { MapRecordsTable.id eq recordId }
                 .singleOrNull()
                 ?: return@suspendTransaction null
 
             if (row[MapRecordsTable.flagged]) return@suspendTransaction null
             if (!row[MapRecordsTable.leaderboardPending]) return@suspendTransaction null
 
-            val recordId = row[MapRecordsTable.id]
+            val localUid = row[MapRecordsTable.localUid]
             val steamid = row[MapRecordsTable.playerSteamid]
             val mapName = row[MapRecordsTable.mapName]
             val timeMs = row[MapRecordsTable.timeMs]
@@ -129,11 +133,11 @@ class RecordService(
         true
     }
 
-    suspend fun flagInvalidReplay(localUid: String, reason: String): Boolean = withContext(ioDispatcher) {
+    suspend fun flagInvalidReplay(recordId: Uuid, reason: String): Boolean = withContext(ioDispatcher) {
         val outcome = suspendTransaction {
             val row = MapRecordsTable
                 .selectAll()
-                .where { MapRecordsTable.localUid eq localUid }
+                .where { MapRecordsTable.id eq recordId }
                 .singleOrNull()
                 ?: return@suspendTransaction FlagOutcome.Missing
 
@@ -141,7 +145,7 @@ class RecordService(
                 return@suspendTransaction FlagOutcome.AlreadyFlagged
             }
 
-            val recordId = row[MapRecordsTable.id]
+            val localUid = row[MapRecordsTable.localUid]
             val wasPending = row[MapRecordsTable.leaderboardPending]
             val serverId = row[MapRecordsTable.serverId]
 
@@ -166,7 +170,7 @@ class RecordService(
                     invalidated = true,
                 )
             }
-            FlagOutcome.Flagged(recordId, serverId)
+            FlagOutcome.Flagged(recordId, serverId, localUid)
         }
 
         when (outcome) {
@@ -176,7 +180,7 @@ class RecordService(
                 metrics.flaggedRecords.increment()
                 auditLogger.log("RECORD_FLAGGED", outcome.serverId, buildJsonObject {
                     put("record_id", outcome.recordId.toString())
-                    put("local_uid", localUid)
+                    put("local_uid", outcome.localUid)
                     put("reason", reason)
                 })
                 true
@@ -215,6 +219,24 @@ class RecordService(
         return null
     }
 
+    private fun findDuplicate(serverId: Int, payload: AddRecordPayload): RecordResult? {
+        val existing = MapRecordsTable
+            .selectAll()
+            .where { (MapRecordsTable.serverId eq serverId) and (MapRecordsTable.localUid eq payload.localUid) }
+            .singleOrNull() ?: return null
+        return if (
+            existing[MapRecordsTable.playerSteamid] == payload.steamid &&
+            existing[MapRecordsTable.mapName] == payload.mapName &&
+            existing[MapRecordsTable.timeMs] == payload.timeMs &&
+            existing[MapRecordsTable.checkpoints] == payload.checkpoints &&
+            existing[MapRecordsTable.gochecks] == payload.gochecks
+        ) {
+            RecordResult.Duplicate(existing[MapRecordsTable.id])
+        } else {
+            RecordResult.Rejected("Record UID already belongs to a different submission")
+        }
+    }
+
     private suspend fun persistRecord(
         serverId: Int,
         pluginVersionId: Int,
@@ -223,14 +245,7 @@ class RecordService(
         val sample = Timer.start()
         try {
             suspendTransaction {
-                val existing = MapRecordsTable
-                    .selectAll()
-                    .where { MapRecordsTable.localUid eq payload.localUid }
-                    .singleOrNull()
-
-                if (existing != null) {
-                    return@suspendTransaction RecordResult.Duplicate(existing[MapRecordsTable.id])
-                }
+                findDuplicate(serverId, payload)?.let { return@suspendTransaction it }
 
                 val minTime = MapMinimumTimesTable
                     .selectAll()
@@ -282,14 +297,7 @@ class RecordService(
         } catch (e: Exception) {
             sample.stop(metrics.recordPersistLatency)
             if (!isUniqueConstraintViolation(e)) throw e
-            val dupId = suspendTransaction {
-                MapRecordsTable
-                    .selectAll()
-                    .where { MapRecordsTable.localUid eq payload.localUid }
-                    .singleOrNull()
-                    ?.get(MapRecordsTable.id)
-            } ?: throw e
-            RecordResult.Duplicate(dupId)
+            suspendTransaction { findDuplicate(serverId, payload) } ?: throw e
         }
     }
 

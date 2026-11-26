@@ -74,7 +74,7 @@ class RecordServiceFinalizeLeaderboardTest {
             assertEquals(0, BestProRecordsTable.selectAll().count())
         }
 
-        val finalized = service.finalizePendingLeaderboard("uid-finalize")
+        val finalized = service.finalizePendingLeaderboard(submit.recordId)
 
         assertTrue(finalized)
         transaction {

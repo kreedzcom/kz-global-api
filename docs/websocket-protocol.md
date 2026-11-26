@@ -252,7 +252,7 @@ Only records that are not flagged and not waiting on a replay (`leaderboard_pend
 }
 ```
 
-- `local_uid` is a server-generated string used for idempotency. Submitting the same `local_uid` twice returns the same `RECORD_ACK` both times.
+- `local_uid` is a server-generated string used for idempotency. Submitting the same run and `local_uid` twice from the same game server returns the original record ID. A UID may use up to 63 ASCII letters, digits, underscores, or hyphens.
 - `gochecks` — required non-negative integer: go-check count. **`gochecks == 0`** → **pro** only; **`gochecks > 0`** → **nub** only.
 - `checkpoints` — required non-negative integer: how many checkpoints were touched in the run (aggregate count only; no per-segment times). If **`gochecks > 0`**, **`checkpoints` must be greater than zero** (a positive go-check count without any checkpoint is rejected as invalid).
 
@@ -288,6 +288,7 @@ When a world record changes, the API pushes **`MAP_INFO` (`msg_type` 102)** with
 
 ```json
 {
+  "record_id": "<uuid>",
   "url": "https://...",
   "local_uid": "0_00012345_steam_abc",
   "map_name": "kz_canyon"

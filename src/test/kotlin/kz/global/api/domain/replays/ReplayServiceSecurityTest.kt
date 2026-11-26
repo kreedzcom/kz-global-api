@@ -11,6 +11,27 @@ import kotlin.test.assertSame
 
 class ReplayServiceSecurityTest {
 
+    @Test
+    fun `servers with identical UIDs assemble independently`() {
+        val service = ReplayService(
+            r2Client = mockk(relaxed = true),
+            metrics = KzMetrics(SimpleMeterRegistry(), ConnectedServersRegistry()),
+            security = testSecurityConfig(),
+        )
+        val first = service.parseChunk(ReplayServiceTest.buildChunk("shared-uid", zstdPayload, 0, 2))!!
+        val last = service.parseChunk(ReplayServiceTest.buildChunk("shared-uid", ByteArray(2), 1, 2))!!
+
+        val a = service.receive(first, serverId = 1)
+        val b = service.receive(first, serverId = 2)
+        val aComplete = service.receive(last, serverId = 1)
+        val bComplete = service.receive(last, serverId = 2)
+
+        assertSame(ReplayAssemblyResult.Pending, a)
+        assertSame(ReplayAssemblyResult.Pending, b)
+        assertIs<ReplayAssemblyResult.Complete>(aComplete)
+        assertIs<ReplayAssemblyResult.Complete>(bComplete)
+    }
+
     private val zstdPayload = ReplayServiceTest.ZSTD_MAGIC + ByteArray(8) { it.toByte() }
 
     @Test

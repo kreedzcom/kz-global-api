@@ -35,6 +35,7 @@ private const val MAX_REPLAY_CHUNKS = 50_000
 const val TOP_REPLAY_COUNT = 10
 
 data class WrReplayUrl(
+    val recordId: Uuid,
     val url: String,
     val localUid: String,
     val mapName: String,
@@ -90,7 +91,9 @@ class ReplayService(
 ) {
 
     private val log = LoggerFactory.getLogger(ReplayService::class.java)
-    private val uploads = ConcurrentHashMap<String, UploadState>()
+    private data class UploadKey(val serverId: Int, val localUid: String)
+
+    private val uploads = ConcurrentHashMap<UploadKey, UploadState>()
     private val ZSTD_MAGIC = byteArrayOf(0x28.toByte(), 0xB5.toByte(), 0x2F.toByte(), 0xFD.toByte())
     private val uploadTtl = security.replayUploadTtlMinutes.minutes
 
@@ -120,25 +123,22 @@ class ReplayService(
 
     fun receive(chunk: ReplayChunk, serverId: Int): ReplayAssemblyResult {
         evictStaleUploads()
-
+        val key = UploadKey(serverId, chunk.localUid)
         if (chunk.total !in 1..MAX_REPLAY_CHUNKS || chunk.index < 0 || chunk.index >= chunk.total) {
-            uploads.remove(chunk.localUid)
+            uploads.remove(key)
             return ReplayAssemblyResult.Rejected.InvalidChunk
         }
 
-        val existing = uploads[chunk.localUid]
+        val existing = uploads[key]
         if (existing == null) {
             if (countActiveUploadsForServer(serverId) >= security.maxConcurrentReplayUploadsPerServer) {
                 return ReplayAssemblyResult.Rejected.TooManyConcurrent
             }
-        } else if (existing.serverId != serverId) {
-            uploads.remove(chunk.localUid)
-            return ReplayAssemblyResult.Rejected.InvalidChunk
         }
 
-        val state = uploads.getOrPut(chunk.localUid) { UploadState(arrayOfNulls(chunk.total), serverId) }
+        val state = uploads.getOrPut(key) { UploadState(arrayOfNulls(chunk.total), serverId) }
         if (state.chunks.size != chunk.total) {
-            uploads.remove(chunk.localUid)
+            uploads.remove(key)
             return ReplayAssemblyResult.Rejected.InvalidChunk
         }
 
@@ -146,7 +146,7 @@ class ReplayService(
         crc.update(chunk.data)
         if (crc.value != chunk.checksum) {
             log.warn("CRC32 mismatch for chunk {}/{} uid={}", chunk.index, chunk.total, chunk.localUid)
-            uploads.remove(chunk.localUid)
+            uploads.remove(key)
             return ReplayAssemblyResult.Rejected.CrcMismatch
         }
 
@@ -156,7 +156,7 @@ class ReplayService(
             return ReplayAssemblyResult.Pending
         }
 
-        uploads.remove(chunk.localUid)
+        uploads.remove(key)
 
         val totalBytes = state.chunks.sumOf { it!!.size.toLong() }
         if (totalBytes > security.maxReplayBytes) {
@@ -179,13 +179,13 @@ class ReplayService(
         return ReplayAssemblyResult.Complete(assembled)
     }
 
-    suspend fun storeReplay(recordId: Uuid, localUid: String, bytes: ByteArray) {
+    suspend fun storeReplay(recordId: Uuid, bytes: ByteArray) {
         val r2Key = "replays/$recordId.krpz"
         r2Client.put(r2Key, bytes)
 
         withContext(ioDispatcher) {
             suspendTransaction {
-                MapRecordsTable.update({ MapRecordsTable.localUid eq localUid }) {
+                MapRecordsTable.update({ MapRecordsTable.id eq recordId }) {
                     it[MapRecordsTable.replayR2Key] = r2Key
                 }
             }
@@ -256,6 +256,7 @@ class ReplayService(
     suspend fun getWrReplayPresignedUrl(mapName: String): WrReplayUrl? = withContext(ioDispatcher) {
         findWrReplayRecord(mapName, "pro")?.let { record ->
             return@withContext WrReplayUrl(
+                recordId = record.id,
                 url = r2Client.presignedGetUrl(record.r2Key),
                 localUid = record.localUid,
                 mapName = mapName,
@@ -267,6 +268,7 @@ class ReplayService(
         }
         findWrReplayRecord(mapName, "nub")?.let { record ->
             return@withContext WrReplayUrl(
+                recordId = record.id,
                 url = r2Client.presignedGetUrl(record.r2Key),
                 localUid = record.localUid,
                 mapName = mapName,
@@ -294,13 +296,13 @@ class ReplayService(
         return r2Client.get(r2Key)
     }
 
-    private data class WrReplayRecord(val r2Key: String, val localUid: String)
+    private data class WrReplayRecord(val id: Uuid, val r2Key: String, val localUid: String)
 
     private suspend fun findWrReplayRecord(mapName: String, category: String): WrReplayRecord? =
         withContext(ioDispatcher) {
             suspendTransaction {
                 (WorldRecordsTable innerJoin MapRecordsTable)
-                    .select(MapRecordsTable.replayR2Key, MapRecordsTable.localUid)
+                    .select(MapRecordsTable.id, MapRecordsTable.replayR2Key, MapRecordsTable.localUid)
                     .where {
                         (WorldRecordsTable.mapName eq mapName) and
                             (WorldRecordsTable.category eq category) and
@@ -310,7 +312,7 @@ class ReplayService(
                     .singleOrNull()
                     ?.let { row ->
                         val key = row[MapRecordsTable.replayR2Key] ?: return@let null
-                        WrReplayRecord(key, row[MapRecordsTable.localUid])
+                        WrReplayRecord(row[MapRecordsTable.id], key, row[MapRecordsTable.localUid])
                     }
             }
         }

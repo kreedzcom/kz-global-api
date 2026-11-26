@@ -110,7 +110,7 @@ class ReplayServiceDbTest {
         val recordId = insertRecord("kz_store", "uid-store")
         val bytes = ByteArray(100) { it.toByte() }
 
-        service.storeReplay(recordId, "uid-store", bytes)
+        service.storeReplay(recordId, bytes)
 
         assertEquals(1, r2.putCalls.size)
         assertEquals("replays/$recordId.krpz", r2.putCalls[0].first)
@@ -121,7 +121,7 @@ class ReplayServiceDbTest {
     fun `storeReplay writes r2 key back to map_record`() = runTest {
         val recordId = insertRecord("kz_store2", "uid-store2")
 
-        service.storeReplay(recordId, "uid-store2", ByteArray(10))
+        service.storeReplay(recordId, ByteArray(10))
 
         val savedKey = transaction {
             MapRecordsTable.selectAll()

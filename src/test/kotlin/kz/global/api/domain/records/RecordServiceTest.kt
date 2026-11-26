@@ -121,7 +121,7 @@ class RecordServiceTest {
 
         val result = service.submit(serverId, pluginVersionId, payload)
         assertIs<RecordResult.Accepted>(result)
-        assertTrue(service.finalizePendingLeaderboard(payload.localUid))
+        assertTrue(service.finalizePendingLeaderboard(result.recordId))
 
         transaction {
             assertNotNull(
@@ -163,7 +163,7 @@ class RecordServiceTest {
 
         val result = service.submit(serverId, pluginVersionId, payload)
         assertIs<RecordResult.Accepted>(result)
-        assertTrue(service.finalizePendingLeaderboard(payload.localUid))
+        assertTrue(service.finalizePendingLeaderboard(result.recordId))
 
         transaction {
             assertNotNull(
@@ -190,6 +190,27 @@ class RecordServiceTest {
 
         assertIs<RecordResult.Duplicate>(second)
         assertEquals(first.recordId, second.recordId)
+    }
+
+    @Test
+    fun `local UID is scoped to the server and the submitted run`() = runTest {
+        val otherServerId = transaction {
+            GameServersTable.insert {
+                it[name] = "other-server"
+                it[accessKey] = ByteArray(16) { 1 }
+            }[GameServersTable.id]
+        }
+        val original = AddRecordPayload(steamid, "kz_canyon", 30_000L, "uid-shared", 0, 0)
+        val distinct = original.copy(timeMs = 31_000L)
+
+        val first = assertIs<RecordResult.Accepted>(service.submit(serverId, pluginVersionId, original))
+        val second = assertIs<RecordResult.Accepted>(service.submit(otherServerId, pluginVersionId, distinct))
+        val conflicting = service.submit(serverId, pluginVersionId, distinct)
+        val repeat = service.submit(otherServerId, pluginVersionId, distinct)
+
+        assertNotEquals(first.recordId, second.recordId)
+        assertIs<RecordResult.Rejected>(conflicting)
+        assertEquals(RecordResult.Duplicate(second.recordId), repeat)
     }
 
     // ─── Anti-cheat (minimum time) ───────────────────────────────────────────
@@ -236,8 +257,8 @@ class RecordServiceTest {
     fun `pro run sets only pro world record`() = runTest {
         val payload = AddRecordPayload(steamid, "kz_wr", 20_000L, "uid-wr", 0, 0)
 
-        service.submit(serverId, pluginVersionId, payload)
-        assertTrue(service.finalizePendingLeaderboard(payload.localUid))
+        val result = assertIs<RecordResult.Accepted>(service.submit(serverId, pluginVersionId, payload))
+        assertTrue(service.finalizePendingLeaderboard(result.recordId))
 
         transaction {
             assertNull(
@@ -257,8 +278,8 @@ class RecordServiceTest {
     fun `nub run with gochecks sets only nub world record`() = runTest {
         val payload = AddRecordPayload(steamid, "kz_nub", 40_000L, "uid-nub-wr", 10, 3)
 
-        service.submit(serverId, pluginVersionId, payload)
-        assertTrue(service.finalizePendingLeaderboard(payload.localUid))
+        val result = assertIs<RecordResult.Accepted>(service.submit(serverId, pluginVersionId, payload))
+        assertTrue(service.finalizePendingLeaderboard(result.recordId))
 
         transaction {
             assertNotNull(
@@ -279,8 +300,8 @@ class RecordServiceTest {
     @Test
     fun `faster run replaces world record`() = runTest {
         val slow = AddRecordPayload(steamid, "kz_race", 50_000L, "uid-slow", 0, 0)
-        service.submit(serverId, pluginVersionId, slow)
-        assertTrue(service.finalizePendingLeaderboard(slow.localUid))
+        val slowResult = assertIs<RecordResult.Accepted>(service.submit(serverId, pluginVersionId, slow))
+        assertTrue(service.finalizePendingLeaderboard(slowResult.recordId))
         val steamid2 = "STEAM_0:0:99999"
         transaction {
             PlayersTable.upsert(PlayersTable.steamid) {
@@ -291,7 +312,7 @@ class RecordServiceTest {
         val fast = AddRecordPayload(steamid2, "kz_race", 30_000L, "uid-fast", 0, 0)
 
         val fastResult = service.submit(serverId, pluginVersionId, fast) as RecordResult.Accepted
-        assertTrue(service.finalizePendingLeaderboard(fast.localUid))
+        assertTrue(service.finalizePendingLeaderboard(fastResult.recordId))
 
         transaction {
             val wr = WorldRecordsTable.selectAll()
@@ -305,7 +326,7 @@ class RecordServiceTest {
     fun `slower run does not replace world record`() = runTest {
         val fast = AddRecordPayload(steamid, "kz_hold", 20_000L, "uid-hold-fast", 0, 0)
         val fastResult = service.submit(serverId, pluginVersionId, fast) as RecordResult.Accepted
-        assertTrue(service.finalizePendingLeaderboard(fast.localUid))
+        assertTrue(service.finalizePendingLeaderboard(fastResult.recordId))
         val steamid2 = "STEAM_0:0:77777"
         transaction {
             PlayersTable.upsert(PlayersTable.steamid) {
@@ -316,7 +337,7 @@ class RecordServiceTest {
         val slow = AddRecordPayload(steamid2, "kz_hold", 40_000L, "uid-hold-slow", 0, 0)
 
         val slowResult = service.submit(serverId, pluginVersionId, slow) as RecordResult.Accepted
-        assertTrue(service.finalizePendingLeaderboard(slow.localUid))
+        assertTrue(service.finalizePendingLeaderboard(slowResult.recordId))
 
         transaction {
             val slowBest = BestProRecordsTable.selectAll()
@@ -337,11 +358,11 @@ class RecordServiceTest {
     fun `pro run slower than player nub run does not overwrite nub best`() = runTest {
         val nub = AddRecordPayload(steamid, "kz_mix", 20_000L, "uid-mix-nub", 8, 5)
         val nubResult = service.submit(serverId, pluginVersionId, nub) as RecordResult.Accepted
-        assertTrue(service.finalizePendingLeaderboard(nub.localUid))
+        assertTrue(service.finalizePendingLeaderboard(nubResult.recordId))
         val pro = AddRecordPayload(steamid, "kz_mix", 25_000L, "uid-mix-pro", 0, 0)
 
         val proResult = service.submit(serverId, pluginVersionId, pro) as RecordResult.Accepted
-        assertTrue(service.finalizePendingLeaderboard(pro.localUid))
+        assertTrue(service.finalizePendingLeaderboard(proResult.recordId))
 
         transaction {
             val proBest = BestProRecordsTable.selectAll()

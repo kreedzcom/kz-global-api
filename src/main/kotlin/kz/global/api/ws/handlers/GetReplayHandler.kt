@@ -47,6 +47,7 @@ class GetReplayHandler(
             MsgType.GET_REPLAY_ACK,
             envelope.msgId,
             GetReplayAckPayload(
+                recordId = wrReplay.recordId.toString(),
                 url = wrReplay.url,
                 localUid = wrReplay.localUid,
                 mapName = wrReplay.mapName,
