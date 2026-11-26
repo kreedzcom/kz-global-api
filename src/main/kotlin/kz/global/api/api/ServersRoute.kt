@@ -147,7 +147,7 @@ fun Route.serversRoute() {
                         it[active] = false
                     }
                 }
-                registry.disconnect(serverId)
+                registry.revoke(serverId)
 
                 auditLogger.log(
                     "SERVER_DEACTIVATED",

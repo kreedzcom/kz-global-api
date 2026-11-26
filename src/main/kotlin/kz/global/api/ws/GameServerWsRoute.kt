@@ -67,10 +67,14 @@ fun Routing.gameServerWsRoute(trustedProxies: Set<InetAddress>) {
         }
 
         val session = GameServerSession(serverId, this)
-        registry.register(session)
+        if (!registry.register(session)) {
+            close(CloseReason(CloseReason.Codes.GOING_AWAY, "Session unavailable"))
+            return@webSocket
+        }
 
         try {
             incoming.consumeEach { frame ->
+                if (registry.get(serverId) !== session) return@webSocket
                 when (frame) {
                     is Frame.Text -> {
                         val text = frame.readText()
@@ -115,7 +119,7 @@ fun Routing.gameServerWsRoute(trustedProxies: Set<InetAddress>) {
                 }
             }
         } finally {
-            registry.unregister(serverId)
+            registry.unregister(session)
         }
     }
 }
