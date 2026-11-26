@@ -56,7 +56,7 @@ class GameServerSession(
         socket.send(Frame.Text(wsEncodeJson.encodeToString(envelope)))
     }
 
-    suspend fun sendError(msgId: Long, message: String) {
-        sendJson(MsgType.ERROR, msgId, ErrorPayload(message))
+    suspend fun sendError(msgId: Long, message: String, retryable: Boolean? = null) {
+        sendJson(MsgType.ERROR, msgId, ErrorPayload(message, retryable))
     }
 }

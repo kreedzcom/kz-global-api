@@ -96,7 +96,11 @@ fun Routing.gameServerWsRoute() {
                             }
                         }.onFailure { e ->
                             log.warn("Server {}: failed to handle message: {}", serverId, e.message)
-                            session.sendError(envelope.msgId, "Invalid message format")
+                            if (envelope.msgType == MsgType.ADD_RECORD) {
+                                session.sendError(envelope.msgId, "Record submission temporarily unavailable", retryable = true)
+                            } else {
+                                session.sendError(envelope.msgId, "Invalid message format")
+                            }
                         }
                     }
                     is Frame.Binary -> {

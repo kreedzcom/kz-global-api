@@ -133,7 +133,9 @@ class AddRecordHandlerTest {
 
         handler.handle(session, envelope(AddRecordPayload(steamid, "kz_fast", 1_000L, "uid-rejected", 0, 0)))
 
-        assertEquals(MsgType.ERROR, sent().single().msgType)
+        val frame = sent().single()
+        assertEquals(MsgType.ERROR, frame.msgType)
+        assertFalse(frame.data.jsonObject.getValue("retryable").jsonPrimitive.boolean)
     }
 
     @Test
@@ -208,6 +210,7 @@ class AddRecordHandlerTest {
         val frame = sent().last()
         assertEquals(MsgType.ERROR, frame.msgType)
         assertTrue(frame.data.jsonObject["message"]!!.jsonPrimitive.content.contains("Rate limit", ignoreCase = true))
+        assertTrue(frame.data.jsonObject.getValue("retryable").jsonPrimitive.boolean)
     }
 
     @Test
@@ -216,6 +219,8 @@ class AddRecordHandlerTest {
 
         handler.handle(session, envelope(AddRecordPayload(steamid, "kz_canyon", 30_000L, "uid-no-hello", 0, 0)))
 
-        assertEquals(MsgType.ERROR, sent().single().msgType)
+        val frame = sent().single()
+        assertEquals(MsgType.ERROR, frame.msgType)
+        assertTrue(frame.data.jsonObject.getValue("retryable").jsonPrimitive.boolean)
     }
 }

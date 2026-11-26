@@ -215,6 +215,7 @@ class ApplicationIntegrationTest {
 
             assertEquals(MsgType.ERROR, response.msgType)
             assertEquals(5058L, response.msgId)
+            assertEquals("false", response.data.jsonObject["retryable"]!!.jsonPrimitive.content)
             assertEquals(
                 "Invalid message format",
                 response.data.jsonObject["message"]!!.jsonPrimitive.content,
