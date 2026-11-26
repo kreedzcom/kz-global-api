@@ -16,6 +16,8 @@ import kz.global.api.ws.MsgType
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
@@ -33,6 +35,7 @@ class ReplayChunkHandler(
 ) {
 
     private val log = LoggerFactory.getLogger(ReplayChunkHandler::class.java)
+    private val validationSlots = Semaphore(2)
 
     suspend fun handle(session: GameServerSession, bytes: ByteArray) {
         if (!rateLimiters.replayBytesByServer.tryAcquire(session.serverId.toString(), bytes.size)) {
@@ -64,50 +67,44 @@ class ReplayChunkHandler(
                 return
             }
             is ReplayAssemblyResult.Complete -> {
-                val assembled = assembly.bytes
-
-                val recordRow = withContext(ioDispatcher) {
-                    suspendTransaction {
-                        MapRecordsTable
-                            .selectAll()
-                            .where {
+                session.socket.launch {
+                    val recordRow = withContext(ioDispatcher) {
+                        suspendTransaction {
+                            MapRecordsTable.selectAll().where {
                                 (MapRecordsTable.localUid eq chunk.localUid) and
                                     (MapRecordsTable.serverId eq session.serverId)
-                            }
-                            .singleOrNull()
+                            }.singleOrNull()
+                        }
                     }
-                }
 
-                if (recordRow == null) {
-                    log.warn(
-                        "Server {}: replay complete for uid={} but no matching record for this server",
-                        session.serverId,
-                        chunk.localUid,
-                    )
-                    session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = false))
-                    return
-                }
-
-                val recordId = recordRow[MapRecordsTable.id]
-                val mapName = recordRow[MapRecordsTable.mapName]
-                val category = replayService.categoryForGochecks(recordRow[MapRecordsTable.gochecks])
-                val identity = ReplayIdentity(
-                    steamId = recordRow[MapRecordsTable.playerSteamid],
-                    mapName = mapName,
-                    checkpoints = recordRow[MapRecordsTable.checkpoints],
-                    gochecks = recordRow[MapRecordsTable.gochecks],
-                )
-
-                session.socket.launch {
-                    if (recordRow[MapRecordsTable.replayR2Key] != null) {
-                        session.sendJson(MsgType.FILE_ACK, 0, FileAckPayload(localUid = chunk.localUid, status = true))
+                    if (recordRow == null || recordRow[MapRecordsTable.replayR2Key] != null) {
+                        session.sendJson(
+                            MsgType.FILE_ACK, 0,
+                            FileAckPayload(localUid = chunk.localUid, status = recordRow != null),
+                        )
                         return@launch
                     }
-                    when (val validation = KrpReplayValidator.validate(assembled, identity)) {
-                        is KrpValidation.Rejected -> rejectReplay(session, chunk.localUid, recordId, assembled, validation.reason)
-                        is KrpValidation.Accepted -> acceptReplay(session, chunk.localUid, recordId, mapName, category, recordRow[MapRecordsTable.leaderboardPending], assembled)
+
+                    val recordId = recordRow[MapRecordsTable.id]
+                    val mapName = recordRow[MapRecordsTable.mapName]
+                    val category = replayService.categoryForGochecks(recordRow[MapRecordsTable.gochecks])
+                    val identity = ReplayIdentity(
+                        steamId = recordRow[MapRecordsTable.playerSteamid],
+                        mapName = mapName,
+                        checkpoints = recordRow[MapRecordsTable.checkpoints],
+                        gochecks = recordRow[MapRecordsTable.gochecks],
+                    )
+                    val validation = validationSlots.withPermit {
+                        withContext(ioDispatcher) { KrpReplayValidator.validate(assembly.bytes, identity) }
                     }
-                }
+                    when (validation) {
+                        is KrpValidation.Rejected -> rejectReplay(session, chunk.localUid, recordId, assembly.bytes, validation.reason)
+                        is KrpValidation.Accepted -> acceptReplay(
+                            session, chunk.localUid, recordId, mapName, category,
+                            recordRow[MapRecordsTable.leaderboardPending], assembly.bytes,
+                        )
+                    }
+                }.invokeOnCompletion { assembly.close() }
             }
         }
     }

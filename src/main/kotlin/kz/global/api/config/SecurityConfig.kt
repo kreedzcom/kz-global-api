@@ -20,12 +20,14 @@ data class SecurityConfig(
     val wantPlayerRecordsMaxLimit: Int,
     val eventLogRetentionDays: Long,
     val maxWrImprovementRatio: Double?,
+    val maxBufferedReplayBytes: Long = 256L * 1024 * 1024,
     val trustedGameServerProxies: Set<InetAddress> = emptySet(),
 )
 
 fun ApplicationConfig.loadSecurityConfig(): SecurityConfig = SecurityConfig(
     metricsBearerKey = propertyOrNull("security.metricsBearerKey")?.getString()?.takeIf { it.isNotBlank() },
     maxWsFrameBytes = longProp("security.maxWsFrameBytes", 2L * 1024 * 1024),
+    maxBufferedReplayBytes = longProp("security.maxBufferedReplayBytes", 256L * 1024 * 1024),
     maxReplayBytes = longProp("security.maxReplayBytes", 100L * 1024 * 1024),
     maxConcurrentReplayUploadsPerServer = intProp("security.maxConcurrentReplayUploadsPerServer", 10),
     replayUploadTtlMinutes = longProp("security.replayUploadTtlMinutes", 30),
