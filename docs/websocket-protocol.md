@@ -317,7 +317,7 @@ Sent only to servers currently on `map_name`. Plugin deletes the local replay fi
 { "message": "human-readable description" }
 ```
 
-The API echoes the inbound `msg_id` on the ERROR envelope whenever it could be read from the request (including malformed payloads where the outer envelope parsed but inner `data` did not). The plugin uses this to delete the message from local storage and stop retrying.
+The API echoes the inbound `msg_id` when available. For `ADD_RECORD`, `data.retryable` is `true` for temporary failures and `false` for explicit record rejection. Preserve the submission and replay if the outcome is retryable or the disposition is missing or invalid.
 
 ---
 

@@ -175,7 +175,7 @@ data class PlayerRecordsPayload(
 )
 
 @Serializable
-data class ErrorPayload(val message: String)
+data class ErrorPayload(val message: String, val retryable: Boolean? = null)
 
 @Serializable
 data class GetReplayAckPayload(
