@@ -1,6 +1,6 @@
 # cs16kz Plugin Integration Guide
 
-Changes required in the `cs16kz` C++ plugin to work with `kz-global-api`.
+This guide describes the `cs16kz` wire contract and how to register a release with `kz-global-api`.
 
 ## 1. Add `plugin_version` and `plugin_checksum` to `hello`
 
@@ -18,8 +18,9 @@ The API validates the plugin build on connect. Add two fields to the `hello` pay
 }
 ```
 
-- `plugin_version` — read from `MODULE_VERSION`
-- `plugin_checksum` — MD5 of the `.so`/`.dll` binary itself (compute at module load using the path from `dlinfo` / `GetModuleFileName`)
+- `plugin_version` is the exact embedded `MODULE_VERSION` string.
+- `plugin_checksum` is the embedded `MODULE_CHECKSUM`, a 32-hex-character fingerprint of the native module source files.
+- For packaged releases, copy `plugin_version`, `checksum_linux`, and `checksum_windows` from `kz-hello.txt` into the corresponding fields when registering the build.
 
 If the version/checksum is unknown or cutoff, the API closes the connection with a human-readable reason.
 
@@ -93,6 +94,8 @@ After receiving `HelloAck` or `MapChange` response (`MAP_INFO`):
 1. Check if a local `.krpz` exists for the current map (`kz_pb_find_fastest`). When the map has a pro WR, a nub-only local file is not sufficient — the plugin re-requests until a pro replay is cached or the API reports none available.
 2. If not, send `GET_REPLAY` (9) to the API (deduped — one in-flight request per map).
 3. On receiving `GET_REPLAY_ACK`, download, validate, save, and parse the replay.
+
+The API also supports queries 6 (`WANT_COURSE_TOP`) and 7 (`WANT_PLAYER_RECORDS`). The current Pawn interface exposes map details and replay requests.
 
 ## Message type constants
 
